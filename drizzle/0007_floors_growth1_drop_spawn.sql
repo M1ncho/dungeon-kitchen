@@ -1,0 +1,1 @@
+ALTER TABLE "order_settings" DROP COLUMN "spawn_chance_bp";

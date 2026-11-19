@@ -1,0 +1,1018 @@
+{
+  "id": "3c080942-a12c-44af-82f4-5feb9bb0808f",
+  "prevId": "81284a18-8351-48d9-9239-51b70348b4d5",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.customer_types": {
+      "name": "customer_types",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "race": {
+          "name": "race",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job": {
+          "name": "job",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icon": {
+          "name": "icon",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'user'"
+        },
+        "pref_heat": {
+          "name": "pref_heat",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "pref_umami": {
+          "name": "pref_umami",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "pref_sweet": {
+          "name": "pref_sweet",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "pref_mana": {
+          "name": "pref_mana",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "pref_toxin": {
+          "name": "pref_toxin",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "budget_min": {
+          "name": "budget_min",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "budget_max": {
+          "name": "budget_max",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "spawn_weight": {
+          "name": "spawn_weight",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 10
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "customer_types_code_unique": {
+          "name": "customer_types_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "customer_types_pref_heat_check": {
+          "name": "customer_types_pref_heat_check",
+          "value": "\"customer_types\".\"pref_heat\" between -10 and 10"
+        },
+        "customer_types_pref_umami_check": {
+          "name": "customer_types_pref_umami_check",
+          "value": "\"customer_types\".\"pref_umami\" between -10 and 10"
+        },
+        "customer_types_pref_sweet_check": {
+          "name": "customer_types_pref_sweet_check",
+          "value": "\"customer_types\".\"pref_sweet\" between -10 and 10"
+        },
+        "customer_types_pref_mana_check": {
+          "name": "customer_types_pref_mana_check",
+          "value": "\"customer_types\".\"pref_mana\" between -10 and 10"
+        },
+        "customer_types_pref_toxin_check": {
+          "name": "customer_types_pref_toxin_check",
+          "value": "\"customer_types\".\"pref_toxin\" between -10 and 10"
+        },
+        "customer_types_budget_min_check": {
+          "name": "customer_types_budget_min_check",
+          "value": "\"customer_types\".\"budget_min\" >= 0"
+        },
+        "customer_types_budget_range_check": {
+          "name": "customer_types_budget_range_check",
+          "value": "\"customer_types\".\"budget_max\" >= \"customer_types\".\"budget_min\""
+        },
+        "customer_types_spawn_weight_check": {
+          "name": "customer_types_spawn_weight_check",
+          "value": "\"customer_types\".\"spawn_weight\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.dungeon_floors": {
+      "name": "dungeon_floors",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "floor_no": {
+          "name": "floor_no",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "duration_seconds": {
+          "name": "duration_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "danger_level": {
+          "name": "danger_level",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "dungeon_floors_floor_no_unique": {
+          "name": "dungeon_floors_floor_no_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "floor_no"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "dungeon_floors_floor_no_check": {
+          "name": "dungeon_floors_floor_no_check",
+          "value": "\"dungeon_floors\".\"floor_no\" > 0"
+        },
+        "dungeon_floors_duration_check": {
+          "name": "dungeon_floors_duration_check",
+          "value": "\"dungeon_floors\".\"duration_seconds\" > 0"
+        },
+        "dungeon_floors_danger_check": {
+          "name": "dungeon_floors_danger_check",
+          "value": "\"dungeon_floors\".\"danger_level\" between 1 and 5"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.floor_ingredients": {
+      "name": "floor_ingredients",
+      "schema": "",
+      "columns": {
+        "floor_id": {
+          "name": "floor_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ingredient_id": {
+          "name": "ingredient_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "weight": {
+          "name": "weight",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 10
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "floor_ingredients_floor_id_dungeon_floors_id_fk": {
+          "name": "floor_ingredients_floor_id_dungeon_floors_id_fk",
+          "tableFrom": "floor_ingredients",
+          "tableTo": "dungeon_floors",
+          "columnsFrom": [
+            "floor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "floor_ingredients_ingredient_id_ingredients_id_fk": {
+          "name": "floor_ingredients_ingredient_id_ingredients_id_fk",
+          "tableFrom": "floor_ingredients",
+          "tableTo": "ingredients",
+          "columnsFrom": [
+            "ingredient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "floor_ingredients_floor_id_ingredient_id_pk": {
+          "name": "floor_ingredients_floor_id_ingredient_id_pk",
+          "columns": [
+            "floor_id",
+            "ingredient_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "floor_ingredients_weight_check": {
+          "name": "floor_ingredients_weight_check",
+          "value": "\"floor_ingredients\".\"weight\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ingredients": {
+      "name": "ingredients",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icon": {
+          "name": "icon",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'package'"
+        },
+        "rarity": {
+          "name": "rarity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "heat": {
+          "name": "heat",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "umami": {
+          "name": "umami",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sweet": {
+          "name": "sweet",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mana": {
+          "name": "mana",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "toxin": {
+          "name": "toxin",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "base_price": {
+          "name": "base_price",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "is_staple": {
+          "name": "is_staple",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ingredients_code_unique": {
+          "name": "ingredients_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ingredients_rarity_check": {
+          "name": "ingredients_rarity_check",
+          "value": "\"ingredients\".\"rarity\" in ('common', 'rare', 'legendary')"
+        },
+        "ingredients_heat_check": {
+          "name": "ingredients_heat_check",
+          "value": "\"ingredients\".\"heat\" between 0 and 10"
+        },
+        "ingredients_umami_check": {
+          "name": "ingredients_umami_check",
+          "value": "\"ingredients\".\"umami\" between 0 and 10"
+        },
+        "ingredients_sweet_check": {
+          "name": "ingredients_sweet_check",
+          "value": "\"ingredients\".\"sweet\" between 0 and 10"
+        },
+        "ingredients_mana_check": {
+          "name": "ingredients_mana_check",
+          "value": "\"ingredients\".\"mana\" between 0 and 10"
+        },
+        "ingredients_toxin_check": {
+          "name": "ingredients_toxin_check",
+          "value": "\"ingredients\".\"toxin\" between 0 and 10"
+        },
+        "ingredients_base_price_check": {
+          "name": "ingredients_base_price_check",
+          "value": "\"ingredients\".\"base_price\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.profiles": {
+      "name": "profiles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nickname": {
+          "name": "nickname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gold": {
+          "name": "gold",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 200
+        },
+        "reputation": {
+          "name": "reputation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "profiles_nickname_unique": {
+          "name": "profiles_nickname_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "nickname"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "profiles_nickname_check": {
+          "name": "profiles_nickname_check",
+          "value": "char_length(\"profiles\".\"nickname\") between 2 and 12"
+        },
+        "profiles_gold_check": {
+          "name": "profiles_gold_check",
+          "value": "\"profiles\".\"gold\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.shops": {
+      "name": "shops",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "shop_type": {
+          "name": "shop_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'food_stall'"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "floor_id": {
+          "name": "floor_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "shops_owner_id_profiles_id_fk": {
+          "name": "shops_owner_id_profiles_id_fk",
+          "tableFrom": "shops",
+          "tableTo": "profiles",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "shops_floor_id_dungeon_floors_id_fk": {
+          "name": "shops_floor_id_dungeon_floors_id_fk",
+          "tableFrom": "shops",
+          "tableTo": "dungeon_floors",
+          "columnsFrom": [
+            "floor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "shops_owner_id_shop_type_key": {
+          "name": "shops_owner_id_shop_type_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "owner_id",
+            "shop_type"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "shops_shop_type_check": {
+          "name": "shops_shop_type_check",
+          "value": "\"shops\".\"shop_type\" in ('food_stall')"
+        },
+        "shops_name_check": {
+          "name": "shops_name_check",
+          "value": "char_length(\"shops\".\"name\") between 2 and 20"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.user_ingredients": {
+      "name": "user_ingredients",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ingredient_id": {
+          "name": "ingredient_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "user_ingredients_user_id_profiles_id_fk": {
+          "name": "user_ingredients_user_id_profiles_id_fk",
+          "tableFrom": "user_ingredients",
+          "tableTo": "profiles",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "user_ingredients_ingredient_id_ingredients_id_fk": {
+          "name": "user_ingredients_ingredient_id_ingredients_id_fk",
+          "tableFrom": "user_ingredients",
+          "tableTo": "ingredients",
+          "columnsFrom": [
+            "ingredient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "user_ingredients_user_id_ingredient_id_pk": {
+          "name": "user_ingredients_user_id_ingredient_id_pk",
+          "columns": [
+            "user_id",
+            "ingredient_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "user_ingredients_quantity_check": {
+          "name": "user_ingredients_quantity_check",
+          "value": "\"user_ingredients\".\"quantity\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.market_settings": {
+      "name": "market_settings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "smallint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": 1
+        },
+        "slot_seconds": {
+          "name": "slot_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "peddlers_per_slot": {
+          "name": "peddlers_per_slot",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "market_settings_singleton_check": {
+          "name": "market_settings_singleton_check",
+          "value": "\"market_settings\".\"id\" = 1"
+        },
+        "market_settings_slot_seconds_check": {
+          "name": "market_settings_slot_seconds_check",
+          "value": "\"market_settings\".\"slot_seconds\" > 0"
+        },
+        "market_settings_peddlers_check": {
+          "name": "market_settings_peddlers_check",
+          "value": "\"market_settings\".\"peddlers_per_slot\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.peddler_offers": {
+      "name": "peddler_offers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slot": {
+          "name": "slot",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "peddler_index": {
+          "name": "peddler_index",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "floor_id": {
+          "name": "floor_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ingredient_id": {
+          "name": "ingredient_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "price": {
+          "name": "price",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sold": {
+          "name": "sold",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "peddler_offers_user_id_profiles_id_fk": {
+          "name": "peddler_offers_user_id_profiles_id_fk",
+          "tableFrom": "peddler_offers",
+          "tableTo": "profiles",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "peddler_offers_floor_id_dungeon_floors_id_fk": {
+          "name": "peddler_offers_floor_id_dungeon_floors_id_fk",
+          "tableFrom": "peddler_offers",
+          "tableTo": "dungeon_floors",
+          "columnsFrom": [
+            "floor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "peddler_offers_ingredient_id_ingredients_id_fk": {
+          "name": "peddler_offers_ingredient_id_ingredients_id_fk",
+          "tableFrom": "peddler_offers",
+          "tableTo": "ingredients",
+          "columnsFrom": [
+            "ingredient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "peddler_offers_unique_item": {
+          "name": "peddler_offers_unique_item",
+          "nullsNotDistinct": false,
+          "columns": [
+            "user_id",
+            "slot",
+            "peddler_index",
+            "ingredient_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "peddler_offers_price_check": {
+          "name": "peddler_offers_price_check",
+          "value": "\"peddler_offers\".\"price\" > 0"
+        },
+        "peddler_offers_quantity_check": {
+          "name": "peddler_offers_quantity_check",
+          "value": "\"peddler_offers\".\"quantity\" > 0"
+        },
+        "peddler_offers_sold_check": {
+          "name": "peddler_offers_sold_check",
+          "value": "\"peddler_offers\".\"sold\" >= 0 and \"peddler_offers\".\"sold\" <= \"peddler_offers\".\"quantity\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.peddler_rules": {
+      "name": "peddler_rules",
+      "schema": "",
+      "columns": {
+        "floor_id": {
+          "name": "floor_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "visit_weight": {
+          "name": "visit_weight",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "items_min": {
+          "name": "items_min",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "items_max": {
+          "name": "items_max",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qty_min": {
+          "name": "qty_min",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qty_max": {
+          "name": "qty_max",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rare_bp": {
+          "name": "rare_bp",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "legendary_bp": {
+          "name": "legendary_bp",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "price_min_pct": {
+          "name": "price_min_pct",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "price_max_pct": {
+          "name": "price_max_pct",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "peddler_rules_floor_id_dungeon_floors_id_fk": {
+          "name": "peddler_rules_floor_id_dungeon_floors_id_fk",
+          "tableFrom": "peddler_rules",
+          "tableTo": "dungeon_floors",
+          "columnsFrom": [
+            "floor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "peddler_rules_visit_weight_check": {
+          "name": "peddler_rules_visit_weight_check",
+          "value": "\"peddler_rules\".\"visit_weight\" > 0"
+        },
+        "peddler_rules_items_check": {
+          "name": "peddler_rules_items_check",
+          "value": "\"peddler_rules\".\"items_min\" >= 1 and \"peddler_rules\".\"items_max\" >= \"peddler_rules\".\"items_min\""
+        },
+        "peddler_rules_qty_check": {
+          "name": "peddler_rules_qty_check",
+          "value": "\"peddler_rules\".\"qty_min\" >= 1 and \"peddler_rules\".\"qty_max\" >= \"peddler_rules\".\"qty_min\""
+        },
+        "peddler_rules_rarity_check": {
+          "name": "peddler_rules_rarity_check",
+          "value": "\"peddler_rules\".\"rare_bp\" >= 0 and \"peddler_rules\".\"legendary_bp\" >= 0 and \"peddler_rules\".\"rare_bp\" + \"peddler_rules\".\"legendary_bp\" <= 10000"
+        },
+        "peddler_rules_price_check": {
+          "name": "peddler_rules_price_check",
+          "value": "\"peddler_rules\".\"price_min_pct\" > 0 and \"peddler_rules\".\"price_max_pct\" >= \"peddler_rules\".\"price_min_pct\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.peddler_slots": {
+      "name": "peddler_slots",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slot": {
+          "name": "slot",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "peddler_slots_user_id_profiles_id_fk": {
+          "name": "peddler_slots_user_id_profiles_id_fk",
+          "tableFrom": "peddler_slots",
+          "tableTo": "profiles",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "peddler_slots_user_id_slot_pk": {
+          "name": "peddler_slots_user_id_slot_pk",
+          "columns": [
+            "user_id",
+            "slot"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
