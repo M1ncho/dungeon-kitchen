@@ -1,26 +1,218 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-dk-bg: var(--dk-bg);
+  --color-dk-outline: var(--dk-outline);
+  --color-dk-shadow: var(--dk-shadow);
+  --color-dk-wood: var(--dk-wood);
+  --color-dk-plank: var(--dk-plank);
+  --color-dk-plank-dark: var(--dk-plank-dark);
+  --color-dk-wood-light: var(--dk-wood-light);
+  --color-dk-paper: var(--dk-paper);
+  --color-dk-paper-badge: var(--dk-paper-badge);
+  --color-dk-paper-area: var(--dk-paper-area);
+  --color-dk-lantern: var(--dk-lantern);
+  --color-dk-red: var(--dk-red);
+  --color-dk-moss: var(--dk-moss);
+  --color-dk-crystal: var(--dk-crystal);
+  --color-dk-text-sub: var(--dk-text-sub);
+  --color-dk-stone: var(--dk-stone);
+  --color-dk-stone-dark: var(--dk-stone-dark);
+  --color-dk-iron: var(--dk-iron);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  /* ── 코지 카툰 패널 디자인 토큰 ── */
+  --dk-bg: #2b201a; /* 페이지 배경 */
+  --dk-outline: #3b2418; /* 외곽선 */
+  --dk-shadow: #1e1410; /* 패널 외곽 그림자 */
+  --dk-wood: #8f5126; /* 나무 패널 */
+  --dk-plank: #c07a3e; /* 판자 */
+  --dk-plank-dark: #a8652f; /* 판자(어두운 쪽) */
+  --dk-wood-light: #d99a5b; /* 밝은 나무 */
+  --dk-paper: #fff6dc; /* 안내판, 타일 */
+  --dk-paper-badge: #fbecc4; /* 뱃지, 이름표 */
+  --dk-paper-area: #f3e3bd; /* 타일 영역 바탕 */
+  --dk-lantern: #ffb52e; /* 랜턴: 주요 버튼, 선택 상태 */
+  --dk-red: #e0553f; /* 천막 빨강: 명패, 도장 */
+  --dk-moss: #7cb342; /* 이끼 */
+  --dk-crystal: #4fb3bf; /* 수정 청록 */
+  --dk-text-sub: #5a3d2b; /* 본문 보조 텍스트 */
+  /* 장면(ShopScene) 전용 보조색 */
+  --dk-stone: #6e5f55;
+  --dk-stone-dark: #54463d;
+  --dk-iron: #6b6571;
+  /* 글꼴: 제목·숫자·버튼은 Jua, 본문은 Gowun Dodum (한글 대체 폰트 지정) */
+  --font-sans: var(--font-gowun), "Gowun Dodum", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-display: var(--font-jua), "Jua", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ── 코지 카툰 패널 공용 스타일 ── */
+.dk-page {
+  background-color: var(--dk-bg);
+  background-image: radial-gradient(rgba(255, 246, 220, 0.07) 1.6px, transparent 1.8px);
+  background-size: 20px 20px;
+}
+
+/* 세로 판자 띠 (HUD 바) */
+.dk-plank-bar {
+  background-color: var(--dk-plank);
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--dk-plank) 0 118px,
+    var(--dk-outline) 118px 121px,
+    var(--dk-plank-dark) 121px 239px,
+    var(--dk-outline) 239px 242px
+  );
+}
+
+/* 장면 애니메이션 (움직임 줄이기 설정에서는 정지) */
+@keyframes dk-flicker {
+  0%, 100% { transform: scale(1, 1); }
+  35% { transform: scale(0.94, 1.08); }
+  70% { transform: scale(1.04, 0.95); }
+}
+@keyframes dk-steam {
+  0% { transform: translateY(6px); opacity: 0; }
+  30% { opacity: 0.85; }
+  100% { transform: translateY(-12px); opacity: 0; }
+}
+.dk-flame {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: dk-flicker 1.1s ease-in-out infinite;
+}
+.dk-steam {
+  animation: dk-steam 3s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dk-flame,
+  .dk-steam {
+    animation: none;
+  }
 }
