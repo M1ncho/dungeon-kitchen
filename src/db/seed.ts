@@ -3,13 +3,15 @@ import { sql } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import {
   cookingMethods, cookingSettings, customerTypes, dishModifiers, dishZones, dungeonFloors, floorIngredients, ingredients,
-  customerFloorWeights, marketSettings, orderSettings, orderTexts, peddlerRules, salesSettings,
+  customerFloorWeights, helpTopics, marketSettings, orderSettings, orderTexts, peddlerRules, salesSettings, tutorialLines, tutorialSettings,
+  tutorialTips,
 } from "./schema";
 import * as schema from "./schema";
 import { COOKING_SETTINGS, METHODS, MODIFIERS, ZONES } from "./seed-data/cooking";
 import { CUSTOMER_ORDER_PROFILES, ORDER_SETTINGS, ORDER_TEXTS } from "./seed-data/orders";
 import { CUSTOMER_FLOOR_WEIGHTS, CUSTOMER_TASTES, SALES_SETTINGS } from "./seed-data/sales";
 import { EXAM_SETTINGS, FLOORS, FLOOR_DROPS, NEW_CUSTOMERS, PEDDLER_ORIGIN_WEIGHTS, PEDDLER_RULES, SUPERVISORS } from "./seed-data/floors";
+import { HELP_TOPICS, TUTORIAL_CUSTOMER, TUTORIAL_LINES, TUTORIAL_SETTINGS, TUTORIAL_TIPS } from "./seed-data/tutorial";
 import { BASE_PRICES, INGREDIENTS, INGREDIENT_FLOORS, SHORT_NAMES, STAPLES } from "./seed-data/ingredients";
 
 // 마스터 데이터 시드. 재료/층/손님은 code(또는 floor_no) 기준 upsert 이므로
@@ -28,6 +30,12 @@ const CUSTOMERS: [string, string, string, string, string, number, number, number
   // 층 시험 감독관 (일반 손님 가중치 표에는 없다)
   ...SUPERVISORS.map(([code, name, race, job, icon]) => [code, name, race, job, icon, 0, 0, 0, 0, 0, 0, 0, 1] as [string, string, string, string, string, number, number, number, number, number, number, number, number]),
 ];
+// 첫 플레이 안내의 주문 손님(조합장 본인): 일반 손님 가중치 표에는 넣지 않는다 (seed-data/tutorial.ts)
+CUSTOMERS.push([TUTORIAL_CUSTOMER.code, TUTORIAL_CUSTOMER.name, TUTORIAL_CUSTOMER.race, TUTORIAL_CUSTOMER.job, TUTORIAL_CUSTOMER.icon, 0, 0, 0, 0, 0, 0, 0, 1]);
+const ORDER_PROFILES: Record<string, { style: string; customBasePrice: number; regions: { cx: number; cy: number; r: number; w: number; minFloor?: number }[] }> = {
+  ...CUSTOMER_ORDER_PROFILES,
+  [TUTORIAL_CUSTOMER.code]: { style: TUTORIAL_CUSTOMER.style, customBasePrice: TUTORIAL_CUSTOMER.customBasePrice, regions: TUTORIAL_CUSTOMER.regions.map((r) => ({ ...r })) },
+};
 const EXAM_FLOOR_OF = new Map(SUPERVISORS.map(([code, , , , , floor]) => [code, floor]));
 
 const excluded = (col: string) => sql.raw(`excluded."${col}"`);
@@ -187,9 +195,9 @@ export async function seedWorld(db: PgDatabase<PgQueryResultHKT, typeof schema>)
           preferredZones: CUSTOMER_TASTES[code]?.preferred ?? [],
           avoidedZones: CUSTOMER_TASTES[code]?.avoided ?? [],
           toxicPrefMin: CUSTOMER_TASTES[code]?.toxicPrefMin ?? null,
-          orderStyle: CUSTOMER_ORDER_PROFILES[code]?.style ?? "plain",
-          customBasePrice: CUSTOMER_ORDER_PROFILES[code]?.customBasePrice ?? 30,
-          orderRegions: CUSTOMER_ORDER_PROFILES[code]?.regions ?? [],
+          orderStyle: ORDER_PROFILES[code]?.style ?? "plain",
+          customBasePrice: ORDER_PROFILES[code]?.customBasePrice ?? 30,
+          orderRegions: ORDER_PROFILES[code]?.regions ?? [],
           examFloor: EXAM_FLOOR_OF.get(code) ?? null,
         })),
       )
@@ -242,6 +250,29 @@ export async function seedWorld(db: PgDatabase<PgQueryResultHKT, typeof schema>)
         target: orderTexts.code,
         set: { kind: excluded("kind"), key: excluded("key"), style: excluded("style"), text: excluded("text") },
       });
+    // 첫 플레이 안내: 설정, 대사, 상황별 팁, 도움말 (code 기준 upsert, 문장은 이 파일들을 고치고 다시 시드)
+    await tx
+      .insert(tutorialSettings)
+      .values({ id: 1, ...TUTORIAL_SETTINGS })
+      .onConflictDoUpdate({
+        target: tutorialSettings.id,
+        set: { guideName: excluded("guide_name"), guideTitle: excluded("guide_title"), firstTickSeconds: excluded("first_tick_seconds"), orderJudgeScale: excluded("order_judge_scale") },
+      });
+    await tx
+      .insert(tutorialLines)
+      .values(TUTORIAL_LINES.map((l) => ({ ...l, code: `${l.step}.${l.phase || "main"}.${l.seq}` })))
+      .onConflictDoUpdate({
+        target: tutorialLines.code,
+        set: { step: excluded("step"), phase: excluded("phase"), seq: excluded("seq"), kind: excluded("kind"), target: excluded("target"), text: excluded("text") },
+      });
+    await tx
+      .insert(tutorialTips)
+      .values(TUTORIAL_TIPS.map((t) => ({ ...t })))
+      .onConflictDoUpdate({ target: tutorialTips.code, set: { sort: excluded("sort"), text: excluded("text") } });
+    await tx
+      .insert(helpTopics)
+      .values(HELP_TOPICS.map((t) => ({ ...t })))
+      .onConflictDoUpdate({ target: helpTopics.code, set: { sort: excluded("sort"), title: excluded("title"), body: excluded("body") } });
     const customerRows = await tx.select({ id: customerTypes.id, code: customerTypes.code }).from(customerTypes);
     const customerId = new Map(customerRows.map((r) => [r.code, r.id]));
     const weightRows = Object.entries(CUSTOMER_FLOOR_WEIGHTS).flatMap(([floorNo, byCode]) =>

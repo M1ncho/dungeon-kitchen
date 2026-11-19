@@ -81,12 +81,15 @@ export const salesSessions = pgTable(
     lastSettledAt: timestamp("last_settled_at", { withTimezone: true }).notNull(), // 여기까지 정산 완료 (틱 경계)
     endedAt: timestamp("ended_at", { withTimezone: true }),
     closeReason: text("close_reason"), // manual | auto_max_time
+    isTutorial: boolean("is_tutorial").notNull().default(false), // 첫 플레이 안내 세션 (첫 틱에 안내 손님이 수프를 산다, 유저당 1회)
   },
   (t) => [
     check("sales_sessions_status_check", sql`${t.status} in ('open', 'closed')`),
     check("sales_sessions_close_reason_check", sql`${t.closeReason} is null or ${t.closeReason} in ('manual', 'auto_max_time')`),
     // 유저당 영업 중인 세션은 하나
     uniqueIndex("sales_sessions_one_open_idx").on(t.userId).where(sql`${t.status} = 'open'`),
+    // 안내 세션은 유저당 평생 한 번 (안내 손님·주문의 경제 보호)
+    uniqueIndex("sales_sessions_one_tutorial_idx").on(t.userId).where(sql`${t.isTutorial}`),
     index("sales_sessions_user_idx").on(t.userId, t.startedAt),
   ],
 );

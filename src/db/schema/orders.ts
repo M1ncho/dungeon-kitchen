@@ -80,6 +80,7 @@ export const specialOrders = pgTable(
     tick: bigint("tick", { mode: "number" }), // 등장한 틱 (세션 시작 기준, 시험 손님은 null)
     kind: text("kind").notNull().default("order"), // order(주문 손님) | exam(층 시험 손님)
     examFloor: smallint("exam_floor"), // 시험 손님이 심사하는(통과하면 해금되는) 층
+    isTutorial: boolean("is_tutorial").notNull().default(false), // 첫 플레이 안내 주문 (유저당 1회)
     judgeScale: doublePrecision("judge_scale").notNull().default(1), // 판정 범위 배율 (생성 시점에 고정: 층을 옮겨도 대기 중인 주문은 그대로)
     customerTypeId: integer("customer_type_id")
       .notNull()
@@ -115,6 +116,8 @@ export const specialOrders = pgTable(
     check("special_orders_status_check", sql`${t.status} in ('waiting', 'served', 'expired', 'closed')`),
     check("special_orders_kind_check", sql`${t.kind} in ('order', 'exam')`),
     // 같은 층의 시험 손님은 동시에 하나만 대기한다 (중복 생성 방지)
+    // 안내 주문은 유저당 평생 한 번
+    uniqueIndex("special_orders_one_tutorial_idx").on(t.userId).where(sql`${t.isTutorial}`),
     uniqueIndex("special_orders_one_waiting_exam_idx").on(t.userId, t.examFloor).where(sql`${t.kind} = 'exam' and ${t.status} = 'waiting'`),
     check("special_orders_mode_check", sql`${t.mode} is null or ${t.mode} in ('served_dish', 'custom')`),
     index("special_orders_user_status_idx").on(t.userId, t.status),

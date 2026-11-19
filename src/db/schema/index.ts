@@ -4,3 +4,4 @@ export * from "./market";
 export * from "./cooking";
 export * from "./sales";
 export * from "./orders";
+export * from "./tutorial";
