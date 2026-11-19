@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+!.env.example
+
+# playwright
+/test-results/
+/playwright-report/
+
+# 디자인 확인용 캡처 (npm run screenshots / screenshots:stall 로 다시 만든다)
+/screenshots/
