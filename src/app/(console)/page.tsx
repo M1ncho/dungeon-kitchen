@@ -75,7 +75,7 @@ async function HomeContent() {
   const left = (
     <WoodPanel title={`${shopName} 앞`}>
       <div className="rounded-2xl border-[3px] border-dk-outline bg-dk-wood-light p-2 shadow-[inset_0_3px_0_rgba(255,255,255,0.25)]">
-        <div className="aspect-[4/3] overflow-hidden rounded-xl border-[3px] border-dk-outline">
+        <div className="aspect-[4/3] overflow-hidden rounded-xl border-[3px] border-dk-outline" data-tutorial-target="shop-window">
           <ShopScene shopName={shopName} peddlerVisiting={visiting} open={open} examWaiting={!!examAlert} />
         </div>
       </div>

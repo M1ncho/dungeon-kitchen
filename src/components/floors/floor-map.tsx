@@ -40,7 +40,7 @@ export function FloorMap({ data }: { data: FloorMapData }) {
   const retryLeft = data.examRetryAtMs ? Math.max(0, Math.floor(data.examRetryAtMs / 1000) - nowSec) : 0;
 
   return (
-    <div className="space-y-8" data-testid="floor-map" data-current={data.currentFloor} data-unlocked={data.unlockedFloor}>
+    <div className="space-y-8" data-testid="floor-map" data-tutorial-target="floors-map" data-current={data.currentFloor} data-unlocked={data.unlockedFloor}>
       <div className="flex flex-wrap items-center gap-3">
         <Stamp>MAP</Stamp>
         <h1 className="font-display text-2xl text-dk-paper">던전 층 지도</h1>

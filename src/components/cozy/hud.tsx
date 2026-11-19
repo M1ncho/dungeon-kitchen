@@ -2,7 +2,7 @@ import Link from "next/link";
 import { signOut } from "@/app/actions/auth";
 import type { CookProfile } from "@/lib/session";
 import { HudHomeLink } from "./hud-home-link";
-import { CoinIcon, GearIcon, LogoutIcon, StallIcon, StarIcon } from "./icons";
+import { CoinIcon, GearIcon, HelpIcon, LogoutIcon, StallIcon, StarIcon } from "./icons";
 import { ChunkyButton, CozyBadge } from "./primitives";
 
 /** 상단 HUD(나무판 바): 가게 이름표, 골드·평판, 설정, 로그아웃. 모든 콘솔 화면 공통. */
@@ -10,7 +10,7 @@ export function Hud({ cook }: { cook: CookProfile }) {
   const floor = cook.shop ? `${cook.shop.floor.floor_no}층 ${cook.shop.floor.name}` : "층 정보 없음";
 
   return (
-    <header className="dk-plank-bar border-b-[3px] border-dk-outline shadow-[0_6px_0_var(--dk-shadow)]">
+    <header className="dk-plank-bar border-b-[3px] border-dk-outline shadow-[0_6px_0_var(--dk-shadow)]" data-tutorial-target="hud">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-3 px-3 py-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="grid size-12 shrink-0 place-items-center rounded-xl border-[3px] border-dk-outline bg-dk-paper-badge shadow-[0_4px_0_var(--dk-shadow)]">
@@ -20,7 +20,7 @@ export function Hud({ cook }: { cook: CookProfile }) {
             <p className="truncate font-display text-lg">{cook.shop?.name ?? "무명 포장마차"}</p>
             <p className="truncate text-sm text-dk-text-sub">
               {cook.nickname} ·{" "}
-              <Link href="/floors" className="underline decoration-dotted underline-offset-2 hover:text-dk-outline" data-testid="hud-floor" title="던전 층 지도">
+              <Link href="/floors" className="underline decoration-dotted underline-offset-2 hover:text-dk-outline" data-testid="hud-floor" data-tutorial-target="hud-floor" title="던전 층 지도">
                 {floor}
               </Link>
             </p>
@@ -37,6 +37,9 @@ export function Hud({ cook }: { cook: CookProfile }) {
             <StarIcon className="size-7" />
             {cook.reputation.toLocaleString()}
           </CozyBadge>
+          <ChunkyButton href="/help" variant="wood" size="icon" aria-label="도움말" title="조합장의 도움말" data-testid="hud-help">
+            <HelpIcon className="size-7" />
+          </ChunkyButton>
           <ChunkyButton variant="wood" size="icon" disabled aria-label="설정" title="설정 (준비 중)">
             <GearIcon className="size-7" />
           </ChunkyButton>

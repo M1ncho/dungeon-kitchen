@@ -55,7 +55,7 @@ export function HomeBody({
             <Countdown {...nextPeddler} className="font-display text-lg" />
           </PaperCard>
 
-          <PaperCard tone="area" className="p-2.5 sm:p-3.5">
+          <PaperCard tone="area" className="p-2.5 sm:p-3.5" data-tutorial-target="facilities">
             <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {tiles.map((tile) => {
                 const isSelected = tile.code === selected.code;
@@ -65,6 +65,7 @@ export function HomeBody({
                     type="button"
                     aria-pressed={isSelected}
                     data-testid={`facility-tile-${tile.code}`}
+                    data-tutorial-target={`tile-${tile.code}`}
                     onClick={() => setSelectedCode(tile.code)}
                     className={cn(
                       "relative flex min-h-[136px] flex-col items-center justify-end gap-1 rounded-2xl border-[3px] border-dk-outline px-1 pb-2 pt-6 text-dk-outline sm:min-h-[156px] sm:gap-1.5",

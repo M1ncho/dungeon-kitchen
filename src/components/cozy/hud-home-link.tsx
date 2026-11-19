@@ -9,7 +9,7 @@ export function HudHomeLink() {
   const pathname = usePathname();
   if (pathname === "/") return null;
   return (
-    <ChunkyButton href="/" variant="wood" size="sm" className="gap-1.5 px-2.5 sm:px-3">
+    <ChunkyButton href="/" variant="wood" size="sm" className="gap-1.5 px-2.5 sm:px-3" data-tutorial-target="nav-home">
       <HomeIcon className="size-6" />
       {/* 좁은 화면에서는 아이콘만 보이지만, 스크린리더에는 "홈으로" 로 읽힌다 */}
       <span className="sr-only sm:not-sr-only">홈으로</span>

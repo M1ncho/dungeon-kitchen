@@ -92,7 +92,7 @@ async function MarketContent() {
         </div>
       </section>
 
-      <Card>
+      <Card data-tutorial-target="market-staples">
         <CardHeader>
           <CardTitle>기본 식재료</CardTitle>
           <CardDescription>언제든 고정가로 살 수 있습니다. 골드가 부족해도 게임이 막히지 않습니다.</CardDescription>

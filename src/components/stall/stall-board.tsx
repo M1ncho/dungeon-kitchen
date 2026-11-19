@@ -12,6 +12,8 @@ import { hms, useServerSeconds } from "./clock";
 import type { OrderView, ServeCandidate } from "@/db/commands/orders";
 import type { DishStack, StallSession } from "@/db/queries/stall";
 import { QUALITY_LABEL, type Quality } from "@/lib/game/cooking";
+import { TUTORIAL_RECIPE, stallPhase } from "@/lib/game/tutorial";
+import { useTutorial, useTutorialPhase } from "@/components/tutorial/tutorial-layer";
 import { cn } from "@/lib/utils";
 
 type Settings = { displaySlots: number; tickMinutes: number; maxSessionHours: number };
@@ -108,6 +110,14 @@ function PreOpenStall({ settings, stacks, lastClosed }: { settings: Settings; st
   const filled = slots.flatMap((s) => (s && stacks.some((x) => x.dishId === s.dishId) ? [s] : []));
   const valid = filled.length > 0 && filled.every((d) => { const s = stackOf(d.dishId); return d.price >= s.minPrice && d.price <= s.maxPrice && d.quantity >= 1 && d.quantity <= s.count; });
 
+  // 첫 플레이 안내: 진열 칸에 수프가 올라갔는지로 어느 안내를 보여 줄지 정한다 (서버 요청 없는 화면 상태)
+  const tutorial = useTutorial();
+  const [ackPrice, setAckPrice] = useState(false);
+  const hasSoupStock = stacks.some((s) => s.zoneCode === TUTORIAL_RECIPE.zone);
+  const hasSoupSlot = filled.some((d) => stackOf(d.dishId).zoneCode === TUTORIAL_RECIPE.zone);
+  const tutPhase = hasSoupStock || hasSoupSlot ? stallPhase({ hasSoupSlot, ackPrice }) : "short";
+  useTutorialPhase(tutorial.step === "stall_open" ? tutPhase : null, tutPhase === "price" ? () => setAckPrice(true) : undefined);
+
   function start() {
     setError(null);
     startTransition(async () => {
@@ -126,7 +136,7 @@ function PreOpenStall({ settings, stacks, lastClosed }: { settings: Settings; st
           <StatusLamp on={false} data-testid="stall-lamp" data-state="closed">쉬는 중이에요</StatusLamp>
           <p className="text-sm text-dk-paper-badge">진열 칸 {settings.displaySlots}개 · 영업을 시작하면 가격은 고정돼요 · 최대 {settings.maxSessionHours}시간</p>
         </div>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2" data-tutorial-target="stall-slots">
           {slots.map((slot, i) => {
             const stack = slot ? stacks.find((s) => s.dishId === slot.dishId) : null;
             return (
@@ -155,7 +165,7 @@ function PreOpenStall({ settings, stacks, lastClosed }: { settings: Settings; st
           <p className="text-sm text-dk-text-sub">5분마다 손님이 지나가요. 팔리지 않은 요리는 영업을 마치면 창고로 돌아와요.</p>
           {error && <p role="alert" className="text-sm text-dk-red">{error}</p>}
         </div>
-        <ChunkyButton disabled={!valid || pending} onClick={start} data-testid="stall-start">{pending ? "여는 중…" : "영업 시작"}</ChunkyButton>
+        <ChunkyButton disabled={!valid || pending} onClick={start} data-testid="stall-start" data-tutorial-target="stall-start">{pending ? "여는 중…" : "영업 시작"}</ChunkyButton>
       </PaperCard>
     </div>
   );
@@ -167,6 +177,9 @@ type Active = { index: number; phase: "pick" } | { index: number; phase: "place"
 function OpenStall({ settings, stacks, session, serverNowMs, order, candidates }: { settings: Settings; stacks: DishStack[]; session: StallSession; serverNowMs: number; order: OrderView | null; candidates: ServeCandidate[] }) {
   const router = useRouter();
   const nowSec = useServerSeconds(serverNowMs);
+  const tutorial = useTutorial();
+  // 첫 플레이 안내 중 수프 없이 연 영업이면 "수프를 올려 다시 열어 보게" 안내를 보여 준다 (안내 영업은 수프를 진열해 시작한 영업만)
+  useTutorialPhase(tutorial.step === "stall_open" ? "other" : null);
   const [active, setActive] = useState<Active | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
   const [orderResult, setOrderResult] = useState<OrderResult | null>(null);
@@ -204,10 +217,14 @@ function OpenStall({ settings, stacks, session, serverNowMs, order, candidates }
 
   return (
     <div className="space-y-8" data-testid="stall-open" data-state={soldOut ? "soldout" : "open"} data-empty-slots={emptyCount}>
-      {order && <OrderCard key={order.id} order={order} candidates={candidates} serverNowMs={serverNowMs} mode="stall" onResult={setOrderResult} />}
+      {order && (
+        <div data-tutorial-target="stall-order">
+          <OrderCard key={order.id} order={order} candidates={candidates} serverNowMs={serverNowMs} mode="stall" onResult={setOrderResult} />
+        </div>
+      )}
       {orderResult && <OrderResultDialog result={orderResult} onClose={() => setOrderResult(null)} closeLabel="확인" />}
 
-      <WoodPanel title="영업 중">
+      <WoodPanel title="영업 중" data-tutorial-target="stall-open">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <StatusLamp on tone={soldOut ? "warn" : "ok"} data-testid="stall-lamp" data-state={soldOut ? "soldout" : "open"}>
             {soldOut ? "품절이에요" : emptyCount > 0 ? `영업 중 · 빈 칸 ${emptyCount}` : "영업 중이에요"}

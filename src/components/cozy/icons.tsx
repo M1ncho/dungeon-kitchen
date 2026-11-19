@@ -163,6 +163,17 @@ export function GearIcon({ className }: IconProps) {
   );
 }
 
+/** 도움말: 물음표가 들어간 말풍선 */
+export function HelpIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M8 8h32a3 3 0 0 1 3 3v19a3 3 0 0 1-3 3H26l-9 8v-8H8a3 3 0 0 1-3-3V11a3 3 0 0 1 3-3z" className="fill-dk-paper stroke-dk-outline" strokeWidth="2.5" strokeLinejoin="round" />
+      <path d="M19.5 17.5c0-2.8 2-4.5 4.8-4.5s4.7 1.7 4.7 4.1c0 3.4-4.5 3.7-4.5 7" fill="none" className="stroke-dk-outline" strokeWidth="3" strokeLinecap="round" />
+      <circle cx="24.5" cy="28.5" r="1.9" className="fill-dk-outline" />
+    </Svg>
+  );
+}
+
 export function LogoutIcon({ className }: IconProps) {
   return (
     <Svg className={className}>

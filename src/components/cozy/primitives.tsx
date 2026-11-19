@@ -169,6 +169,7 @@ export function ChunkyButton({ children, href, variant = "primary", size = "md",
         aria-label={passthrough["aria-label"] as string | undefined}
         title={passthrough.title as string | undefined}
         data-testid={passthrough["data-testid"] as string | undefined}
+        data-tutorial-target={passthrough["data-tutorial-target"] as string | undefined}
       >
         {children}
       </Link>

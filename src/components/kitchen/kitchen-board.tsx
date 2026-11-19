@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { completeCooking, type CookState } from "@/app/actions/kitchen";
@@ -15,6 +15,8 @@ import {
   QUALITY_LABEL, applyIngredient, simulateCooking,
   type CookingConfig, type CookingIngredient, type CookingMethod, type CookingProblem, type CookingStep, type Quality,
 } from "@/lib/game/cooking";
+import { TUTORIAL_RECIPE, kitchenPhase } from "@/lib/game/tutorial";
+import { useTutorial, useTutorialPhase } from "@/components/tutorial/tutorial-layer";
 import { cn } from "@/lib/utils";
 import { TasteMap } from "./taste-map";
 
@@ -90,6 +92,23 @@ export function KitchenBoard({
     return m;
   }, [steps]);
 
+  // 첫 플레이 안내: 냄비에 넣은 순서로 어느 안내를 보여 줄지 정한다 (서버 요청 없는 화면 상태). 독성 4 이상 팁도 여기서 알린다.
+  const tutorial = useTutorial();
+  const tutKitchen = tutorial.step === "kitchen_cook" && !order;
+  const mushroom = ingredients.find((i) => i.code === TUTORIAL_RECIPE.ingredients[0]);
+  const salt = ingredients.find((i) => i.code === TUTORIAL_RECIPE.ingredients[1]);
+  const [acks, setAcks] = useState({ ack1: false, ack2: false });
+  const tutPhase = !mushroom || !salt ? "short" : kitchenPhase(steps, { mushroom: mushroom.id, salt: salt.id }, acks);
+  useTutorialPhase(
+    tutKitchen ? tutPhase : null,
+    tutPhase === "explain1" ? () => setAcks((a) => ({ ...a, ack1: true })) : tutPhase === "explain2" ? () => setAcks((a) => ({ ...a, ack2: true })) : undefined,
+  );
+  const reportToxin = tutorial.reportToxin;
+  useEffect(() => {
+    reportToxin(result.toxin);
+    return () => reportToxin(0);
+  }, [result.toxin, reportToxin]);
+
   const full = result.ingredientCount >= config.maxIngredients;
   const discovered = new Set(discoveredZoneIds);
   const mapZones = zones.map((z) => ({ ...z, discovered: discovered.has(z.id), locked: z.unlockFloor > unlockedFloor }));
@@ -112,9 +131,13 @@ export function KitchenBoard({
     setSteps((s) => [...s, { type: "method", code }]);
     setServerError(null);
   }
-  const undo = () => setSteps((s) => s.slice(0, -1));
+  const undo = () => {
+    if (steps.length <= 1) setAcks({ ack1: false, ack2: false }); // 냄비가 비면 설명을 처음부터 다시 보여 준다
+    setSteps((s) => s.slice(0, -1));
+  };
   const reset = () => {
     setSteps([]);
+    setAcks({ ack1: false, ack2: false });
     setServerError(null);
   };
 
@@ -131,6 +154,7 @@ export function KitchenBoard({
       else if (res.result) {
         setOrderResult(res.result);
         setSteps([]);
+        setAcks({ ack1: false, ack2: false });
         setServerError(null);
       }
     });
@@ -144,6 +168,7 @@ export function KitchenBoard({
       else {
         setRevealed(res);
         setSteps([]);
+        setAcks({ ack1: false, ack2: false });
         setServerError(null);
       }
     });
@@ -182,7 +207,7 @@ export function KitchenBoard({
       )}
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
         <WoodPanel title="맛 지도">
-          <PaperCard tone="area" className="p-2">
+          <PaperCard tone="area" className="p-2" data-tutorial-target="kitchen-map">
             <TasteMap
               limit={config.mapLimit}
               zones={mapZones}
@@ -213,7 +238,7 @@ export function KitchenBoard({
 
         <div className="space-y-8">
           <WoodPanel title="재료 상자">
-            <ul className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-x-3 gap-y-5">
+            <ul className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-x-3 gap-y-5" data-tutorial-target="kitchen-ingredients">
               {ingredients.map((i) => {
                 const left = i.quantity - (used.get(i.id) ?? 0);
                 const disabled = full || left <= 0;
@@ -265,7 +290,7 @@ export function KitchenBoard({
           </WoodPanel>
 
           <WoodPanel title="조리법">
-            <ul className="grid grid-cols-2 gap-3">
+            <ul className="grid grid-cols-2 gap-3" data-tutorial-target="kitchen-methods">
               {methods.map((m) => {
                 const usedAlready = result.usedMethods.includes(m.code);
                 return (
@@ -310,10 +335,10 @@ export function KitchenBoard({
           <ChunkyButton variant="wood" size="sm" disabled={steps.length === 0 || pending} onClick={undo} data-testid="kitchen-undo">
             되돌리기
           </ChunkyButton>
-          <ChunkyButton variant="wood" size="sm" disabled={steps.length === 0 || pending} onClick={reset} data-testid="kitchen-reset">
+          <ChunkyButton variant="wood" size="sm" disabled={steps.length === 0 || pending} onClick={reset} data-testid="kitchen-reset" data-tutorial-target="kitchen-reset">
             처음부터
           </ChunkyButton>
-          <ChunkyButton disabled={!canSubmit || pending} onClick={order ? serveToCustomer : finish} data-testid="kitchen-finish">
+          <ChunkyButton disabled={!canSubmit || pending} onClick={order ? serveToCustomer : finish} data-testid="kitchen-finish" data-tutorial-target="kitchen-finish">
             {pending ? (order ? "내는 중…" : "만드는 중…") : order ? "손님에게 내기" : "완성하기"}
           </ChunkyButton>
         </div>
