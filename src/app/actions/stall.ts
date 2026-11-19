@@ -20,6 +20,7 @@ const MESSAGES: Record<SalesFailure, string> = {
   slot_not_empty: "판매 중인 칸에는 다른 요리를 올릴 수 없습니다.",
   slot_empty: "빈 칸입니다. 요리를 새로 올려 주세요.",
   bad_slot: "없는 진열 칸입니다.",
+  tutorial_wait: "첫 손님이 다녀가면 영업을 마칠 수 있어요. 잠깐만 기다려 주세요.",
 };
 
 // 모든 액션: user id 는 세션에서만, 시각은 서버 시각만, 기준가·가격 범위·품질은 서버가 계산한다.

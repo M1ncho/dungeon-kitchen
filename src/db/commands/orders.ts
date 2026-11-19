@@ -11,6 +11,7 @@ import { consumeIngredients, parseSteps } from "./cook";
 import { loadCookingIngredients, loadCookingMaster } from "./cooking-data";
 import { loadOrderDictionaries, loadOrderSettings, toOrderConfig } from "./order-spawn";
 import { loadSalesSettings, settleInTx } from "./sales";
+import { onTutorialOrderServed } from "./tutorial";
 
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
@@ -147,7 +148,7 @@ async function claimOrder(tx: Tx, userId: string, orderId: string, now: Date) {
     .returning({
       id: specialOrders.id, targetX: specialOrders.targetX, targetY: specialOrders.targetY, toxinCap: specialOrders.toxinCap,
       customerTypeId: specialOrders.customerTypeId, kind: specialOrders.kind, examFloor: specialOrders.examFloor,
-      judgeScale: specialOrders.judgeScale,
+      judgeScale: specialOrders.judgeScale, isTutorial: specialOrders.isTutorial,
     });
   if (!o) throw new Abort("order_gone");
   return o;
@@ -196,6 +197,8 @@ async function finishOrder(
       gold, reputation, reaction,
     })
     .where(eq(specialOrders.id, input.orderId));
+
+  if (input.claimed.isTutorial) await onTutorialOrderServed(tx, input.userId); // 첫 플레이 안내: 서버 이벤트
 
   const target = { x: input.claimed.targetX, y: input.claimed.targetY, toxinCap: input.claimed.toxinCap };
   return {

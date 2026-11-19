@@ -1,6 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import type { Database } from "../index";
 import { dungeonFloors, profiles, shops } from "../schema";
+import { startTutorial } from "./tutorial";
 
 export type RegisterCookResult =
   | { ok: true }
@@ -49,6 +50,7 @@ export async function registerCook(
 
       await tx.insert(profiles).values({ id: input.userId, nickname });
       await tx.insert(shops).values({ ownerId: input.userId, shopType: "food_stall", name: shopName, floorId: floor.id });
+      await startTutorial(tx, input.userId); // 첫 플레이 안내 시작 (등록과 같은 트랜잭션)
       return { ok: true };
     });
   } catch (err) {

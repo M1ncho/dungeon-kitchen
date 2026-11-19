@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/db";
 import { ensureExamOrder } from "@/db/commands/exams";
 import { settleSessions } from "@/db/commands/sales";
+import { healTutorial } from "@/db/commands/tutorial";
 import { getFoodStall, getProfile } from "@/db/queries/player";
 import { serverNow } from "@/lib/clock";
 
@@ -25,6 +26,7 @@ const settleOnce = cache(async (userId: string) => {
   const now = serverNow();
   await settleSessions(db, userId, now);
   await ensureExamOrder(db, userId, now);
+  await healTutorial(db, userId, now); // 안내 주문 손님이 떠났다면 안내를 마무리 단계로
 });
 
 /** 로그인 + 요리사 등록을 보장한다. 아니면 적절한 페이지로 보낸다. */

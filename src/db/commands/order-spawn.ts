@@ -2,7 +2,9 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { generateOrder, pickOrderCustomer, rollOrderSpawn, type OrderConfig, type OrderCustomerType } from "../../lib/game/orders";
 import { buildDictionaries } from "../../lib/game/orders";
 import type { Database } from "../index";
-import { customerFloorWeights, customerTypes, dungeonFloors, orderSettings, orderTexts, salesSessions, specialOrders } from "../schema";
+import { TUTORIAL_CUSTOMER_CODE } from "../../lib/game/tutorial";
+import { customerFloorWeights, customerTypes, dungeonFloors, orderSettings, orderTexts, salesSessions, specialOrders, tutorialSettings } from "../schema";
+import { getTutorial } from "./tutorial";
 
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 type Executor = Pick<Database, "select">;
@@ -53,8 +55,49 @@ export async function closeWaitingOrders(tx: Tx, sessionId: string, endedAt: Dat
  *   "대기 중" = arrives_at <= 시각 < (ended_at ?? expires_at). 응대·이탈 시각이 기록돼 있으므로 늦게 정산해도 결과가 같다.
  * - 이미 대기 시간이 지난 손님(오래 접속하지 않은 경우)은 expired 로 기록해 둔다.
  */
+/**
+ * 첫 플레이 안내 주문: 안내 세션의 첫 틱(틱 0)이 끝나는 시각에 조합장이 쉬운 주문을 들고 온다 (유저당 1회, 부분 유니크 인덱스).
+ * 안내를 건너뛴 유저에게는 만들지 않는다. 문장은 시드 `세션 id:0:order:tutorial` 로 결정적이고, 독성 상한은 가장 느슨하게, 판정 범위는 넉넉하게 한다.
+ */
+async function spawnTutorialOrder(tx: Tx, session: typeof salesSessions.$inferSelect, now: Date) {
+  const tut = await getTutorial(tx, session.userId);
+  if (!tut || tut.status !== "active" || tut.step !== "wait_sale") return;
+  const [[customer], [ts], settings, dict] = await Promise.all([
+    tx.select().from(customerTypes).where(eq(customerTypes.code, TUTORIAL_CUSTOMER_CODE)),
+    tx.select().from(tutorialSettings),
+    loadOrderSettings(tx),
+    loadOrderDictionaries(tx),
+  ]);
+  if (!customer || !ts) return;
+  const base = toOrderConfig(settings);
+  const order = generateOrder(
+    `${session.id}:0:order:tutorial`,
+    { code: customer.code, style: customer.orderStyle, regions: customer.orderRegions },
+    dict,
+    { ...base, toxCapMin: base.toxCapMax }, // 독성 상한은 가장 느슨하게
+  );
+  const arrives = session.startedAt.getTime() + session.tickSeconds * 1000; // 첫 틱이 끝나는 시각
+  const expires = arrives + settings.waitSeconds * 1000;
+  const gone = expires <= now.getTime();
+  await tx
+    .insert(specialOrders)
+    .values({
+      userId: session.userId, sessionId: session.id, tick: 0, customerTypeId: customer.id, kind: "order", isTutorial: true,
+      judgeScale: ts.orderJudgeScale, status: gone ? "expired" : "waiting",
+      targetX: order.target.x, targetY: order.target.y, toxinCap: order.target.toxinCap,
+      orderText: order.text, hintText: order.hint,
+      arrivesAt: new Date(arrives), expiresAt: new Date(expires), endedAt: gone ? new Date(expires) : null,
+    })
+    .onConflictDoNothing();
+}
+
 export async function spawnOrders(tx: Tx, session: typeof salesSessions.$inferSelect, fromTick: number, toTick: number, now: Date) {
   if (toTick <= fromTick) return;
+  if (session.isTutorial && fromTick === 0) {
+    await spawnTutorialOrder(tx, session, now);
+    fromTick = 1; // 안내 세션의 틱 0 은 안내 주문이 차지한다 (같은 틱에 일반 주문은 없다)
+    if (toTick <= fromTick) return;
+  }
   const [settings, dict] = await Promise.all([loadOrderSettings(tx), loadOrderDictionaries(tx)]);
   // 등장 확률과 판정 범위 배율은 영업을 시작한 층 기준 (깊은 층일수록 자주 오고 까다롭다)
   const [floor] = await tx.select().from(dungeonFloors).where(eq(dungeonFloors.id, session.floorId));

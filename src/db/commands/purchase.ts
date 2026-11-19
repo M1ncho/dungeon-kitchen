@@ -3,6 +3,7 @@ import { slotAt } from "../../lib/game/slot";
 import type { Database } from "../index";
 import { ingredients, peddlerOffers, profiles, userIngredients } from "../schema";
 import { getMarketSettings } from "./peddler-snapshot";
+import { onPurchased } from "./tutorial";
 
 export const MAX_PURCHASE_QUANTITY = 99;
 
@@ -70,6 +71,7 @@ export async function buyStaple(
     const totalCost = item.basePrice * input.quantity; // 가격은 항상 서버(DB) 값
     const gold = await spendGold(tx, input.userId, totalCost);
     await addToInventory(tx, input.userId, input.ingredientId, input.quantity);
+    await onPurchased(tx, input.userId); // 첫 플레이 안내: 서버 이벤트
     return { gold, totalCost };
   });
 }
@@ -114,6 +116,7 @@ export async function buyFromOffer(
     const totalCost = taken.price * input.quantity; // 스냅샷 가격
     const gold = await spendGold(tx, input.userId, totalCost);
     await addToInventory(tx, input.userId, taken.ingredientId, input.quantity);
+    await onPurchased(tx, input.userId); // 첫 플레이 안내: 서버 이벤트
     return { gold, totalCost };
   });
 }

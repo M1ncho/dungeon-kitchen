@@ -55,6 +55,8 @@ export type DishStack = {
   dishId: string;
   name: string;
   zoneName: string;
+  /** 구역 code (첫 플레이 안내가 "수프가 진열됐는지" 판단하는 데 쓴다) */
+  zoneCode: string;
   quality: number;
   toxin: number;
   count: number;
@@ -176,6 +178,7 @@ export async function getStallState(userId: string) {
       dishId: sql<string>`(array_agg(${userDishes.id} order by ${userDishes.createdAt}, ${userDishes.id}))[1]`,
       name: userDishes.name,
       zoneName: dishZones.name,
+      zoneCode: dishZones.code,
       quality: userDishes.quality,
       toxin: userDishes.toxin,
       ingredientCost: userDishes.ingredientCost,
@@ -184,14 +187,14 @@ export async function getStallState(userId: string) {
     .from(userDishes)
     .innerJoin(dishZones, eq(dishZones.id, userDishes.zoneId))
     .where(and(eq(userDishes.userId, userId), isNotNull(userDishes.collectedAt), isNull(userDishes.displayId), isNull(userDishes.soldAt)))
-    .groupBy(userDishes.zoneId, dishZones.name, userDishes.name, userDishes.quality, userDishes.toxin, userDishes.ingredientCost)
+    .groupBy(userDishes.zoneId, dishZones.name, dishZones.code, userDishes.name, userDishes.quality, userDishes.toxin, userDishes.ingredientCost)
     .orderBy(asc(userDishes.name), desc(userDishes.quality));
 
   const stacks: DishStack[] = stackRows.map((r) => {
     const basePrice = basePriceOf(r.ingredientCost, settings.priceMultiplier * floorMult);
     const range = priceRange(basePrice, settings.priceMinPct, settings.priceMaxPct);
     return {
-      dishId: r.dishId, name: r.name, zoneName: r.zoneName, quality: r.quality, toxin: r.toxin, count: r.count,
+      dishId: r.dishId, name: r.name, zoneName: r.zoneName, zoneCode: r.zoneCode, quality: r.quality, toxin: r.toxin, count: r.count,
       basePrice, minPrice: range.min, maxPrice: range.max,
     };
   });

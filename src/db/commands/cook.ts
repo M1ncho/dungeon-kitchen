@@ -3,6 +3,7 @@ import { simulateCooking, type CookingProblem, type CookingStep, type Quality } 
 import type { Database } from "../index";
 import { ingredients as ingredientsTable, profiles, recipeDiscoveries, userDishes, userIngredients } from "../schema";
 import { loadCookingIngredients, loadCookingMaster } from "./cooking-data";
+import { onCooked } from "./tutorial";
 
 export const MAX_STEPS = 12; // 재료 4 + 조리법 4 에 여유를 둔 상한 (비정상 입력 차단)
 
@@ -130,6 +131,8 @@ export async function cookDish(db: Database, input: { userId: string; steps: unk
           },
         })
         .returning({ inserted: sql<boolean>`(xmax = 0)` });
+
+      await onCooked(tx, input.userId, zone.code); // 첫 플레이 안내: 수프를 완성했을 때만 다음 단계로
 
       return {
         ok: true as const,

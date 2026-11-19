@@ -1,5 +1,6 @@
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { Quality } from "../../lib/game/cooking";
+import { TUTORIAL_CUSTOMER_CODE, TUTORIAL_RECIPE } from "../../lib/game/tutorial";
 import {
   basePriceOf, completedTicks, eligibleAt, priceRange, simulateSalesTick, tickStartMs,
   type SalesConfig, type SalesCustomer,
@@ -8,8 +9,9 @@ import type { Database } from "../index";
 import { closeWaitingOrders, spawnOrders, sweepExpiredOrders } from "./order-spawn";
 import {
   customerFloorWeights, customerTypes, dishZones, dungeonFloors, profiles, salesRecords, salesSessions, salesSettings, sessionDisplays,
-  shops, userDishes,
+  shops, tutorialSettings, userDishes,
 } from "../schema";
+import { advanceStep, getTutorial, onTutorialSale } from "./tutorial";
 
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 type Executor = Pick<Database, "select">;
@@ -18,7 +20,7 @@ export const MAX_DISPLAY_QUANTITY = 99;
 
 export type SalesFailure =
   | "bad_request" | "already_open" | "no_session" | "no_free_slot" | "dish_unavailable" | "insufficient_dishes"
-  | "price_out_of_range" | "no_shop" | "slot_not_empty" | "slot_empty" | "bad_slot";
+  | "price_out_of_range" | "no_shop" | "slot_not_empty" | "slot_empty" | "bad_slot" | "tutorial_wait";
 
 class Abort extends Error {
   constructor(public reason: SalesFailure) {
@@ -181,8 +183,39 @@ async function applyTicks(tx: Tx, session: typeof salesSessions.$inferSelect, fr
   let reputation = 0;
   const startedMs = session.startedAt.getTime();
 
+  // 첫 플레이 안내 세션: 안내를 건너뛰지 않았다면 첫 틱에 안내 손님(조합장)이 수프 1개를 반드시 산다 (유저당 1회, 틱 시드와 별개로 고정된 규칙이라 결정적)
+  let tutorialCustomerId: number | null = null;
+  let tutorialSold = false;
+  if (session.isTutorial && fromTick === 0) {
+    const tut = await getTutorial(tx, session.userId);
+    if (tut?.status === "active" && tut.step === "wait_sale") {
+      const [c] = await tx.select({ id: customerTypes.id }).from(customerTypes).where(eq(customerTypes.code, TUTORIAL_CUSTOMER_CODE));
+      tutorialCustomerId = c?.id ?? null;
+    }
+  }
+
   for (let tick = fromTick; tick < toTick; tick++) {
     const start = tickStartMs(startedMs, session.tickSeconds, tick);
+    const soldAt = new Date(start + session.tickSeconds * 1000);
+    if (tutorialCustomerId !== null && tick === 0 && !tutorialSold) {
+      const g = groupList.find((x) => x.zoneCode === TUTORIAL_RECIPE.zone && eligibleAt(x.lots, start).some((l) => l.row.quantity - l.sold > 0));
+      const lot = g ? eligibleAt(g.lots, start).find((l) => l.row.quantity - l.sold > 0) : undefined;
+      const dishId = lot ? (dishQueue.get(lot.row.id)?.shift() ?? null) : null;
+      if (g && lot && dishId) {
+        const q = lot.row.quality;
+        const rep = q === 3 ? config.repPerfect : q === 2 ? config.repGood : 0;
+        lot.sold += 1;
+        gold += lot.row.price;
+        reputation += rep;
+        soldDishes.push({ id: dishId, at: soldAt });
+        records.push({
+          sessionId: session.id, userId: session.userId, tick, visitIndex: 99, source: "tutorial", customerTypeId: tutorialCustomerId,
+          displayId: lot.row.id, slotIndex: g.slotIndex, dishId, zoneId: lot.row.zoneId, dishName: lot.row.name, quality: q,
+          price: lot.row.price, basePrice: lot.row.basePrice, reputationGained: rep, preferred: false, soldAt,
+        });
+        tutorialSold = true;
+      }
+    }
     // 틱 시작 시각 이전(같음 포함)에 입고된 재고만 이 틱에 팔린다 → 칸 교체·보충 시각과 틱 경계가 겹쳐도 결정적이다
     const tickGroups = groupList.map((g) => {
       const eligible = eligibleAt(g.lots, start);
@@ -199,7 +232,6 @@ async function applyTicks(tx: Tx, session: typeof salesSessions.$inferSelect, fr
       customers,
       config,
     );
-    const soldAt = new Date(start + session.tickSeconds * 1000);
     for (const sale of result.sales) {
       const t = tickGroups.find((x) => x.g.id === sale.displayId)!;
       const lot = t.eligible.find((l) => l.row.quantity - l.sold > 0); // 먼저 입고된 것부터
@@ -244,6 +276,7 @@ async function applyTicks(tx: Tx, session: typeof salesSessions.$inferSelect, fr
     .update(profiles)
     .set({ gold: sql`${profiles.gold} + ${gold}`, reputation: sql`${profiles.reputation} + ${reputation}` })
     .where(eq(profiles.id, session.userId));
+  if (tutorialSold) await onTutorialSale(tx, session.userId); // 첫 플레이 안내: 서버 이벤트
 }
 
 /** 정산만 실행한다 (화면 접근 시). 영업 중이 아니면 쿼리 한 번으로 끝난다. */
@@ -441,8 +474,32 @@ export async function startSession(db: Database, input: { userId: string; displa
     for (const d of displays) {
       await placeDisplay(tx, { userId: input.userId, sessionId: session.id, input: d, now: input.now, settings, floorPriceMultiplier: floor.priceMultiplier });
     }
+    await markTutorialSession(tx, input.userId, session.id);
     return {};
   });
+}
+
+/**
+ * 첫 플레이 안내: 안내 단계(stall_open)에서 수프를 진열해 연 영업은 안내 세션이 된다.
+ * 틱 길이가 짧고(첫 안내 손님이 금방 온다) 첫 틱에 안내 손님·안내 주문이 등장한다. 유저당 1회(부분 유니크 인덱스).
+ * 안내를 건너뛰었거나 이미 지나간 유저, 수프 없이 연 영업은 일반 세션이다.
+ */
+async function markTutorialSession(tx: Tx, userId: string, sessionId: string) {
+  const tut = await getTutorial(tx, userId);
+  if (!tut || tut.status !== "active" || tut.step !== "stall_open") return;
+  const soup = await tx
+    .select({ id: sessionDisplays.id })
+    .from(sessionDisplays)
+    .innerJoin(dishZones, eq(dishZones.id, sessionDisplays.zoneId))
+    .where(and(eq(sessionDisplays.sessionId, sessionId), eq(dishZones.code, TUTORIAL_RECIPE.zone)))
+    .limit(1);
+  if (soup.length === 0) return;
+  // 시드가 빠진 환경(안내 설정·안내 손님이 없음)에서는 안내 세션으로 만들지 않는다: 첫 안내 손님이 올 수 없는데 영업을 못 닫는 일을 막는다
+  const [ts] = await tx.select().from(tutorialSettings);
+  const [guest] = await tx.select({ id: customerTypes.id }).from(customerTypes).where(eq(customerTypes.code, TUTORIAL_CUSTOMER_CODE));
+  if (!ts || !guest) return;
+  await tx.update(salesSessions).set({ isTutorial: true, tickSeconds: ts.firstTickSeconds }).where(eq(salesSessions.id, sessionId));
+  await advanceStep(tx, userId, "stall_open", "wait_sale");
 }
 
 /**
@@ -483,6 +540,11 @@ export async function closeSession(db: Database, input: { userId: string; now: D
     await settleInTx(tx, input.userId, input.now);
     const session = await openSessionOf(tx, input.userId);
     if (!session) throw new Abort("no_session"); // 이미 마감됨(자동 마감 포함)
+    if (session.isTutorial) {
+      // 안내 세션은 첫 안내 손님이 다녀가기 전에는 닫을 수 없다 (안내 손님·주문은 유저당 1회라 놓치면 되돌릴 수 없다)
+      const tut = await getTutorial(tx, input.userId);
+      if (tut?.status === "active" && tut.step === "wait_sale") throw new Abort("tutorial_wait");
+    }
     await closeInTx(tx, session.id, input.userId, input.now, "manual");
     return {};
   });
