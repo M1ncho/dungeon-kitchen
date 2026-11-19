@@ -1,8 +1,12 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { expect, type Page } from "@playwright/test";
+import { skipTutorialOf } from "./db";
 
-/** 새 테스트 계정으로 가입하고 요리사 등록까지 마친다. 계정은 삭제하지 않는다 (created-accounts.log 에 기록). */
-export async function createAccount(page: Page) {
+/**
+ * 새 테스트 계정으로 가입하고 요리사 등록까지 마친다. 계정은 삭제하지 않는다 (created-accounts.log 에 기록).
+ * 기본은 첫 플레이 안내를 건너뛴 상태로 만든다 (안내 오버레이가 다른 e2e 를 방해하지 않게). 안내를 시험할 때만 { tutorial: true }.
+ */
+export async function createAccount(page: Page, opts: { tutorial?: boolean } = {}) {
   const stamp = Date.now() + Math.floor(Math.random() * 1000);
   const email = `test+${stamp}@example.com`;
   const password = `Pw-${stamp}-aA1`;
@@ -24,6 +28,11 @@ export async function createAccount(page: Page) {
   await expect(page).toHaveURL(/\/$/, { timeout: 30_000 });
   await expect(page.getByText(nickname).first()).toBeVisible();
 
+  if (!opts.tutorial) {
+    await skipTutorialOf(nickname);
+    await page.reload();
+    await expect(page.getByText(nickname).first()).toBeVisible();
+  }
   return { email, password, nickname, shopName };
 }
 

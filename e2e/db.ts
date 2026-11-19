@@ -35,6 +35,28 @@ export async function setProfile(nickname: string, patch: { gold?: number; reput
   await db.update(schema.profiles).set(patch).where(eq(schema.profiles.nickname, nickname));
 }
 
+/**
+ * 첫 플레이 안내를 건너뜀 상태로 만들고 상황별 팁도 모두 본 것으로 한다
+ * (안내·팁 말풍선이 다른 e2e 의 클릭을 가리지 않게. 안내·팁 자체는 tutorial.spec.ts 가 시험한다).
+ */
+export async function skipTutorialOf(nickname: string) {
+  const { db, schema } = await load();
+  const [p] = await db.select({ id: schema.profiles.id }).from(schema.profiles).where(eq(schema.profiles.nickname, nickname));
+  const tips = await db.select({ code: schema.tutorialTips.code }).from(schema.tutorialTips);
+  await db
+    .update(schema.tutorialProgress)
+    .set({ status: "skipped", step: "done", finishedAt: new Date(), seenTips: tips.map((t) => t.code) })
+    .where(eq(schema.tutorialProgress.userId, p.id));
+}
+
+/** 이 유저의 안내 진행 상태. */
+export async function readTutorial(nickname: string) {
+  const { db, schema } = await load();
+  const [p] = await db.select({ id: schema.profiles.id }).from(schema.profiles).where(eq(schema.profiles.nickname, nickname));
+  const [t] = await db.select().from(schema.tutorialProgress).where(eq(schema.tutorialProgress.userId, p.id));
+  return t ?? null;
+}
+
 /** 닉네임으로 유저 id 와 현재 층 번호를 읽는다. */
 export async function readPlayer(nickname: string) {
   const { db, schema } = await load();
