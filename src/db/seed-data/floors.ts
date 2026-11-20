@@ -8,7 +8,7 @@ export type FloorSeed = {
   theme: string; // 층 지도에 보이는 한 줄 테마
   description: string;
   dangerLevel: number;
-  durationSeconds: number;
+  durationSeconds: number; // 의뢰 게시판 소요 시간(초): 의뢰한 재료의 해금 층 기준 (1층 30분 … 5층 4시간)
   unlockReputation: number; // 이 층의 승급 시험 손님이 나타나는 평판
   moveCost: number; // 이 층으로 내려갈 때(더 깊은 층으로) 드는 골드. 위층으로 갈 때는 무료
   priceMultiplier: number; // 손님이 쳐주는 요리 기준가 배율 (재료비 × 판매 배율 × 이 값)
@@ -19,11 +19,11 @@ export type FloorSeed = {
 };
 
 export const FLOORS: FloorSeed[] = [
-  { floorNo: 1, name: "이끼 낀 입구", theme: "초보 모험가가 오가는 곳", description: "습하지만 비교적 안전한 던전 초입. 기본 재료와 소박한 요리가 어울린다.", dangerLevel: 1, durationSeconds: 300, unlockReputation: 0, moveCost: 0, priceMultiplier: 1.0, orderSpawnBp: 3000, orderJudgeScale: 1.0, qualityFlatScale: 1.0, normalPenalty: 0 },
-  { floorNo: 2, name: "버섯 동굴", theme: "습하고 빛나는 버섯", description: "발광 버섯과 이끼가 가득한 동굴. 절임과 전골이 인기다.", dangerLevel: 2, durationSeconds: 600, unlockReputation: 30, moveCost: 150, priceMultiplier: 1.25, orderSpawnBp: 3300, orderJudgeScale: 0.92, qualityFlatScale: 1.2, normalPenalty: 4 },
-  { floorNo: 3, name: "용암 갈림길", theme: "뜨겁고 위험한 길목", description: "용암이 흐르는 길목. 화염 재료와 불맛 요리의 단골들이 지나간다.", dangerLevel: 3, durationSeconds: 900, unlockReputation: 80, moveCost: 400, priceMultiplier: 1.6, orderSpawnBp: 3600, orderJudgeScale: 0.85, qualityFlatScale: 1.4, normalPenalty: 8 },
-  { floorNo: 4, name: "얼음 수정굴", theme: "차갑고 반짝이는 곳", description: "수정과 냉기가 어우러진 굴. 마력 요리를 찾는 손님이 많다.", dangerLevel: 4, durationSeconds: 1200, unlockReputation: 160, moveCost: 900, priceMultiplier: 2.0, orderSpawnBp: 4000, orderJudgeScale: 0.78, qualityFlatScale: 1.7, normalPenalty: 12 },
-  { floorNo: 5, name: "마력의 샘", theme: "숙련 모험가들의 쉼터", description: "마력이 샘솟는 쉼터. 전설 재료와 숙련 모험가들의 까다로운 입맛이 있다.", dangerLevel: 5, durationSeconds: 1800, unlockReputation: 300, moveCost: 1800, priceMultiplier: 2.6, orderSpawnBp: 4500, orderJudgeScale: 0.7, qualityFlatScale: 2.0, normalPenalty: 16 },
+  { floorNo: 1, name: "이끼 낀 입구", theme: "초보 모험가가 오가는 곳", description: "습하지만 비교적 안전한 던전 초입. 기본 재료와 소박한 요리가 어울린다.", dangerLevel: 1, durationSeconds: 1800, unlockReputation: 0, moveCost: 0, priceMultiplier: 1.0, orderSpawnBp: 3000, orderJudgeScale: 1.0, qualityFlatScale: 1.0, normalPenalty: 0 },
+  { floorNo: 2, name: "버섯 동굴", theme: "습하고 빛나는 버섯", description: "발광 버섯과 이끼가 가득한 동굴. 절임과 전골이 인기다.", dangerLevel: 2, durationSeconds: 3600, unlockReputation: 30, moveCost: 150, priceMultiplier: 1.25, orderSpawnBp: 3300, orderJudgeScale: 0.92, qualityFlatScale: 1.2, normalPenalty: 4 },
+  { floorNo: 3, name: "용암 갈림길", theme: "뜨겁고 위험한 길목", description: "용암이 흐르는 길목. 화염 재료와 불맛 요리의 단골들이 지나간다.", dangerLevel: 3, durationSeconds: 7200, unlockReputation: 80, moveCost: 400, priceMultiplier: 1.6, orderSpawnBp: 3600, orderJudgeScale: 0.85, qualityFlatScale: 1.4, normalPenalty: 8 },
+  { floorNo: 4, name: "얼음 수정굴", theme: "차갑고 반짝이는 곳", description: "수정과 냉기가 어우러진 굴. 마력 요리를 찾는 손님이 많다.", dangerLevel: 4, durationSeconds: 10800, unlockReputation: 160, moveCost: 900, priceMultiplier: 2.0, orderSpawnBp: 4000, orderJudgeScale: 0.78, qualityFlatScale: 1.7, normalPenalty: 12 },
+  { floorNo: 5, name: "마력의 샘", theme: "숙련 모험가들의 쉼터", description: "마력이 샘솟는 쉼터. 전설 재료와 숙련 모험가들의 까다로운 입맛이 있다.", dangerLevel: 5, durationSeconds: 14400, unlockReputation: 300, moveCost: 1800, priceMultiplier: 2.6, orderSpawnBp: 4500, orderJudgeScale: 0.7, qualityFlatScale: 2.0, normalPenalty: 16 },
 ];
 
 /** 행상 출신 층 가중치: 내 가게가 있는 층 기준 (같은 층 / 한 층 아래(더 깊은 층) / 위층). 없는 층은 빼고 다시 계산한다. */

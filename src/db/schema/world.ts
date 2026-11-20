@@ -10,7 +10,7 @@ export const dungeonFloors = pgTable(
     floorNo: smallint("floor_no").notNull().unique(),
     name: text("name").notNull(),
     description: text("description").notNull().default(""),
-    durationSeconds: integer("duration_seconds").notNull(), // 채집 파견 소요 시간
+    durationSeconds: integer("duration_seconds").notNull(), // 의뢰 게시판 소요 시간 (의뢰한 재료의 해금 층 기준)
     dangerLevel: smallint("danger_level").notNull(),
     // 성장 1단계(층 이동): 층마다 달라지는 값 (시드: src/db/seed-data/floors.ts)
     theme: text("theme").notNull().default(""), // 층 지도의 한 줄 테마

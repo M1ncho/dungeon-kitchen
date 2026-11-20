@@ -4,13 +4,14 @@ import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import {
   cookingMethods, cookingSettings, customerTypes, dishModifiers, dishZones, dungeonFloors, floorIngredients, ingredients,
   customerFloorWeights, helpTopics, marketSettings, orderSettings, orderTexts, peddlerRules, salesSettings, tutorialLines, tutorialSettings,
-  tutorialTips,
+  tutorialTips, requestSettings, requestTexts,
 } from "./schema";
 import * as schema from "./schema";
 import { COOKING_SETTINGS, METHODS, MODIFIERS, ZONES } from "./seed-data/cooking";
 import { CUSTOMER_ORDER_PROFILES, ORDER_SETTINGS, ORDER_TEXTS } from "./seed-data/orders";
 import { CUSTOMER_FLOOR_WEIGHTS, CUSTOMER_TASTES, SALES_SETTINGS } from "./seed-data/sales";
 import { EXAM_SETTINGS, FLOORS, FLOOR_DROPS, NEW_CUSTOMERS, PEDDLER_ORIGIN_WEIGHTS, PEDDLER_RULES, SUPERVISORS } from "./seed-data/floors";
+import { REQUEST_SETTINGS, REQUEST_TEXTS } from "./seed-data/requests";
 import { HELP_TOPICS, TUTORIAL_CUSTOMER, TUTORIAL_LINES, TUTORIAL_SETTINGS, TUTORIAL_TIPS } from "./seed-data/tutorial";
 import { BASE_PRICES, INGREDIENTS, INGREDIENT_FLOORS, SHORT_NAMES, STAPLES } from "./seed-data/ingredients";
 
@@ -273,6 +274,18 @@ export async function seedWorld(db: PgDatabase<PgQueryResultHKT, typeof schema>)
       .insert(helpTopics)
       .values(HELP_TOPICS.map((t) => ({ ...t })))
       .onConflictDoUpdate({ target: helpTopics.code, set: { sort: excluded("sort"), title: excluded("title"), body: excluded("body") } });
+    // 의뢰 게시판: 설정과 모험가 한마디 (code 기준 upsert)
+    await tx
+      .insert(requestSettings)
+      .values({ id: 1, ...REQUEST_SETTINGS })
+      .onConflictDoUpdate({
+        target: requestSettings.id,
+        set: Object.fromEntries(Object.keys(REQUEST_SETTINGS).map((k) => [k, excluded(k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`))])) as never,
+      });
+    await tx
+      .insert(requestTexts)
+      .values(REQUEST_TEXTS.map((t) => ({ ...t })))
+      .onConflictDoUpdate({ target: requestTexts.code, set: { outcome: excluded("outcome"), speaker: excluded("speaker"), text: excluded("text") } });
     const customerRows = await tx.select({ id: customerTypes.id, code: customerTypes.code }).from(customerTypes);
     const customerId = new Map(customerRows.map((r) => [r.code, r.id]));
     const weightRows = Object.entries(CUSTOMER_FLOOR_WEIGHTS).flatMap(([floorNo, byCode]) =>
