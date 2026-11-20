@@ -24,7 +24,7 @@ export default defineConfig({
     // E2E_SERVER_LOG=1 이면 dev 서버 로그를 테스트 출력에 연결한다 (로그 점검용).
     stdout: process.env.E2E_SERVER_LOG ? "pipe" : "ignore",
     stderr: process.env.E2E_SERVER_LOG ? "pipe" : "ignore",
-    env: process.env.E2E_PROD ? {} : { E2E_FIXED_NOW: pinned.toISOString(), E2E_TIME_OFFSET_FILE: TIME_OFFSET_FILE },
+    env: process.env.E2E_PROD ? {} : { E2E_FIXED_NOW: pinned.toISOString(), E2E_TIME_OFFSET_FILE: TIME_OFFSET_FILE, REQUEST_TIME_SCALE: "1800" },
     timeout: 240_000,
   },
 });

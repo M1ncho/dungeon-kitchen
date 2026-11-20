@@ -42,6 +42,9 @@ function problems(): string[] {
   if (process.env.E2E_TIME_OFFSET_FILE && process.env.NODE_ENV === "production") {
     out.push("E2E_TIME_OFFSET_FILE 은 e2e 전용이라 production 에서는 설정할 수 없습니다.");
   }
+  if (process.env.REQUEST_TIME_SCALE && process.env.NODE_ENV === "production") {
+    out.push("REQUEST_TIME_SCALE 은 개발·테스트 전용이라 production 에서는 설정할 수 없습니다.");
+  }
   return out;
 }
 
