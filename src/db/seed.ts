@@ -1,10 +1,10 @@
 import { config } from "dotenv";
-import { sql } from "drizzle-orm";
+import { notInArray, sql } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import {
   cookingMethods, cookingSettings, customerTypes, dishModifiers, dishZones, dungeonFloors, floorIngredients, ingredients,
   customerFloorWeights, helpTopics, marketSettings, orderSettings, orderTexts, peddlerRules, salesSettings, tutorialLines, tutorialSettings,
-  tutorialTips, requestSettings, requestTexts,
+  tutorialTips, requestSettings, requestTexts, criticSettings, criticTexts,
 } from "./schema";
 import * as schema from "./schema";
 import { COOKING_SETTINGS, METHODS, MODIFIERS, ZONES } from "./seed-data/cooking";
@@ -12,6 +12,7 @@ import { CUSTOMER_ORDER_PROFILES, ORDER_SETTINGS, ORDER_TEXTS } from "./seed-dat
 import { CUSTOMER_FLOOR_WEIGHTS, CUSTOMER_TASTES, SALES_SETTINGS } from "./seed-data/sales";
 import { EXAM_SETTINGS, FLOORS, FLOOR_DROPS, NEW_CUSTOMERS, PEDDLER_ORIGIN_WEIGHTS, PEDDLER_RULES, SUPERVISORS } from "./seed-data/floors";
 import { REQUEST_SETTINGS, REQUEST_TEXTS } from "./seed-data/requests";
+import { CRITIC_SETTINGS, CRITIC_TEXTS, FLOOR_CRITIC_STRICTNESS } from "./seed-data/critic";
 import { HELP_TOPICS, TUTORIAL_CUSTOMER, TUTORIAL_LINES, TUTORIAL_SETTINGS, TUTORIAL_TIPS } from "./seed-data/tutorial";
 import { BASE_PRICES, INGREDIENTS, INGREDIENT_FLOORS, SHORT_NAMES, STAPLES } from "./seed-data/ingredients";
 
@@ -45,7 +46,7 @@ export async function seedWorld(db: PgDatabase<PgQueryResultHKT, typeof schema>)
   await db.transaction(async (tx) => {
     await tx
       .insert(dungeonFloors)
-      .values(FLOORS)
+      .values(FLOORS.map((f) => ({ ...f, criticStrictnessBp: FLOOR_CRITIC_STRICTNESS[f.floorNo] ?? 10000 })))
       .onConflictDoUpdate({
         target: dungeonFloors.floorNo,
         set: {
@@ -61,6 +62,7 @@ export async function seedWorld(db: PgDatabase<PgQueryResultHKT, typeof schema>)
           orderJudgeScale: excluded("order_judge_scale"),
           qualityFlatScale: excluded("quality_flat_scale"),
           normalPenalty: excluded("normal_penalty"),
+          criticStrictnessBp: excluded("critic_strictness_bp"),
         },
       });
 
@@ -286,6 +288,23 @@ export async function seedWorld(db: PgDatabase<PgQueryResultHKT, typeof schema>)
       .insert(requestTexts)
       .values(REQUEST_TEXTS.map((t) => ({ ...t })))
       .onConflictDoUpdate({ target: requestTexts.code, set: { outcome: excluded("outcome"), speaker: excluded("speaker"), text: excluded("text") } });
+    // 미식 평론가: 설정과 평 문장 템플릿 (code 기준 upsert)
+    await tx
+      .insert(criticSettings)
+      .values({ id: 1, ...CRITIC_SETTINGS })
+      .onConflictDoUpdate({
+        target: criticSettings.id,
+        set: Object.fromEntries(Object.keys(CRITIC_SETTINGS).map((k) => [k, excluded(k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`))])) as never,
+      });
+    await tx
+      .insert(criticTexts)
+      .values(CRITIC_TEXTS.map((t) => ({ ...t })))
+      .onConflictDoUpdate({
+        target: criticTexts.code,
+        set: { kind: excluded("kind"), item: excluded("item"), tier: excluded("tier"), tag: excluded("tag"), text: excluded("text") },
+      });
+    // 이름이 바뀌거나 빠진 문장이 남지 않게, 이번 시드에 없는 code 는 지운다
+    await tx.delete(criticTexts).where(notInArray(criticTexts.code, CRITIC_TEXTS.map((t) => t.code)));
     const customerRows = await tx.select({ id: customerTypes.id, code: customerTypes.code }).from(customerTypes);
     const customerId = new Map(customerRows.map((r) => [r.code, r.id]));
     const weightRows = Object.entries(CUSTOMER_FLOOR_WEIGHTS).flatMap(([floorNo, byCode]) =>

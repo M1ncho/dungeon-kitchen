@@ -30,6 +30,14 @@ export type SalesConfig = {
   /** 층별 보정 (성장 1단계): 좋음·완벽의 고정 보정 점수 배율 / 보통 품질의 구매 점수 감점 */
   qualityFlatScale: number;
   normalPenalty: number;
+  /**
+   * 미식 평론가 별점 효과 (이 틱 시점의 가게 별점 0~3). 0 이거나 없으면 아무 효과도 없고 난수도 더 쓰지 않는다 (기존 결과 그대로).
+   * - 틱마다 손님이 한 명 더 올 확률 = 별 × starCustomerBp / 10000 (손님 수 상한은 그대로)
+   * - 가격 부담 = 부담 × (1 − 별 × starReliefBp / 10000)
+   */
+  criticStars?: number;
+  starCustomerBp?: number;
+  starReliefBp?: number;
 };
 
 export type SalesCustomer = {
@@ -91,7 +99,8 @@ export function priceBurden(price: number, basePrice: number, quality: Quality, 
   const r = price / basePrice;
   if (r <= 1) return -(1 - r) * cfg.discountSlope;
   const relief = quality === 3 ? cfg.reliefPerfect : quality === 2 ? cfg.reliefGood : 0;
-  return (r - 1) * cfg.burdenSlope * (1 - relief);
+  const starRelief = Math.min(1, ((cfg.criticStars ?? 0) * (cfg.starReliefBp ?? 0)) / 10000);
+  return (r - 1) * cfg.burdenSlope * (1 - relief) * (1 - starRelief);
 }
 
 export function qualityFlat(quality: Quality, cfg: SalesConfig): number {
@@ -124,7 +133,9 @@ export function simulateSalesTick(
   config: SalesConfig,
 ): TickResult {
   const rng: Rng = createRng(seed);
-  const customerCount = randInt(rng, config.customersMin, config.customersMax);
+  let customerCount = randInt(rng, config.customersMin, config.customersMax);
+  const extraBp = (config.criticStars ?? 0) * (config.starCustomerBp ?? 0);
+  if (extraBp > 0 && customerCount < config.customersMax && rng() * 10000 < extraBp) customerCount += 1; // 별점 효과 (효과가 없으면 난수도 쓰지 않는다)
   const stock = new Map(display.map((d) => [d.id, d.remaining]));
   const weights = customers.map((c) => c.weight);
   const sales: TickSale[] = [];

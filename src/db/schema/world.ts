@@ -21,6 +21,7 @@ export const dungeonFloors = pgTable(
     orderJudgeScale: doublePrecision("order_judge_scale").notNull().default(1), // 주문 판정 범위 배율
     qualityFlatScale: doublePrecision("quality_flat_scale").notNull().default(1), // 좋음·완벽 품질 보정 배율
     normalPenalty: doublePrecision("normal_penalty").notNull().default(0), // 보통 품질 구매 점수 감점
+    criticStrictnessBp: integer("critic_strictness_bp").notNull().default(10000), // 평론가 별 환산 엄격도 (별 기준에 곱한다, 1/10000)
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

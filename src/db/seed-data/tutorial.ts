@@ -100,7 +100,7 @@ export const TUTORIAL_LINES: readonly TutorialLine[] = L;
 
 // ───── 상황별 한 줄 팁 (처음 한 번만, 유저별 저장) ─────
 // 조건은 코드(src/db/queries/tutorial.ts)가 판단한다: rare_ingredient(희귀·전설 재료 보유), toxin_4(주방 독성 4 이상),
-// locked_zone(주방에서 잠긴 구역이 보임), exam_waiting(승급 시험 손님 대기), sold_out(영업 중 품절), first_request(첫 의뢰 등록).
+// locked_zone(주방에서 잠긴 구역이 보임), exam_waiting(승급 시험 손님 대기), sold_out(영업 중 품절), first_request(첫 의뢰 등록), first_review(첫 평론가의 평이 발행됨).
 export const TUTORIAL_TIPS: readonly { code: string; sort: number; text: string }[] = [
   { code: "rare_ingredient", sort: 1, text: "오, 희귀 재료로군! 맛 지도에서 표식을 크게 움직이니 신중히 쓰게." },
   { code: "toxin_4", sort: 2, text: "독성이 4를 넘었군. 6이 되면 완성할 수 없으니 물이나 끓이기로 낮추게." },
@@ -108,6 +108,7 @@ export const TUTORIAL_TIPS: readonly { code: string; sort: number; text: string 
   { code: "exam_waiting", sort: 4, text: "조합 감독관이 시험을 보러 왔군. 맞춤 요리로만 응대할 수 있으니 차분히 준비하게." },
   { code: "sold_out", sort: 5, text: "진열이 텅 비었군. 창고에서 새 요리를 올리면 영업을 이어 갈 수 있다네." },
   { code: "first_request", sort: 6, text: "첫 의뢰를 붙였군! 모험가가 돌아오면 의뢰 게시판에서 결과를 받게." },
+  { code: "first_review", sort: 7, text: "가면 미식가의 평이 가이드북에 실렸군! 별이 붙어 있는 동안은 손님이 조금 더 찾아온다네." },
 ];
 
 // ───── 도움말 (조합장의 도움말, /help) ─────
