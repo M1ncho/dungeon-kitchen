@@ -66,8 +66,7 @@ async function walk(page: Page, tag: "desktop" | "mobile") {
   };
   const goHome = () => page.getByRole("link", { name: "홈으로" }).click();
   const goTile = async (code: string, url: RegExp) => {
-    await page.getByTestId(`facility-tile-${code}`).click();
-    await page.getByTestId("facility-go").click();
+    await page.locator(`[data-testid="tab-${code}"]:visible`).click(); // 이동 탭 (데스크톱 왼쪽 / 모바일 하단)
     await expect(page).toHaveURL(url);
   };
 
@@ -93,7 +92,7 @@ async function walk(page: Page, tag: "desktop" | "mobile") {
 
   // ── 2. 재료 시장 ── (홈에 있으니 길 안내: 시장 타일 강조)
   await expectBubble(page, "market_info", "nav");
-  await expectLayoutOk(page, "tile-MKT");
+  await expectLayoutOk(page, "tab-MKT");
   await expect(spotlight(page)).toHaveAttribute("data-dim", "false"); // 직접 해야 하는 구간(길 안내)은 어둡게 깔지 않는다
   await snap("2-nav-market");
   await goTile("MKT", /\/market$/);
@@ -117,7 +116,7 @@ async function walk(page: Page, tag: "desktop" | "mobile") {
   // ── 3. 주방 ──
   await goHome();
   await expectBubble(page, "kitchen_cook", "nav");
-  await expectLayoutOk(page, "tile-KIT");
+  await expectLayoutOk(page, "tab-KIT");
   await goTile("KIT", /\/kitchen$/);
   await expectBubble(page, "kitchen_cook", "pick1");
   await expectLayoutOk(page, "kitchen-ingredients");
@@ -170,7 +169,7 @@ async function walk(page: Page, tag: "desktop" | "mobile") {
 
   // ── 4. 포장마차 ──
   await goHome();
-  await expectLayoutOk(page, "tile-STL");
+  await expectLayoutOk(page, "tab-STL");
   await goTile("STL", /\/stall$/);
   await expectBubble(page, "stall_open", "display");
   await expectLayoutOk(page, "stall-slots");

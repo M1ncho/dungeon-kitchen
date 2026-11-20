@@ -216,8 +216,9 @@ describe.skipIf(!enabled)("영업 (통합)", () => {
     const second = await oneDish(u, 3, 20); // 기준가 48G
     expect(await addDisplay(db, { userId: u, now: at(7), display: { dishId: second.id, quantity: 60, price: 24 } })).toEqual({ ok: true });
     await settleSessions(db, u, at(120));
-    const [, d2] = (await displays(s.id)).sort((x, y) => x.slotIndex - y.slotIndex);
-    expect(d2).toMatchObject({ slotIndex: 1, basePrice: 48, price: 24 });
+    const d2 = (await displays(s.id)).find((d) => d.basePrice === 48)!; // 나중에 올린 요리 (기준가 48G)
+    expect(d2).toMatchObject({ basePrice: 48, price: 24 });
+    expect([0, 1]).toContain(d2.slotIndex); // 첫 칸의 3개가 그 사이 다 팔렸다면(판매는 확률) 새 요리는 빈 칸 0 에 들어간다
     const rec2 = (await records(s.id)).filter((r) => r.displayId === d2.id);
     expect(rec2.length).toBeGreaterThan(0);
     expect(Math.min(...rec2.map((r) => r.tick))).toBeGreaterThanOrEqual(2);

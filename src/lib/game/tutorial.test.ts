@@ -158,7 +158,7 @@ describe("주방·포장마차 세부 단계", () => {
 describe("시드 대사·팁·도움말", () => {
   const sentences = (t: string) => t.split(/(?<=[.!?])\s+/).filter(Boolean).length;
   const TARGETS = new Set([
-    "", "hud", "hud-floor", "shop-window", "facilities", "nav-home", "tile-MKT", "tile-KIT", "tile-STL", "market-staples", "kitchen-map",
+    "", "hud", "hud-floor", "shop-window", "facilities", "nav-home", "tab-HOME", "tab-MKT", "tab-KIT", "tab-STL", "market-staples", "kitchen-map",
     "kitchen-ingredients", "kitchen-methods", "kitchen-finish", "kitchen-reset", "stall-slots", "stall-start", "stall-open", "stall-order", "floors-map",
   ]);
 
@@ -192,8 +192,8 @@ describe("시드 대사·팁·도움말", () => {
     }
   });
 
-  it("상황별 팁 5종과 도움말 주제 7종, 팁도 두 문장 이내", () => {
-    expect(TUTORIAL_TIPS.map((t) => t.code)).toEqual(["rare_ingredient", "toxin_4", "locked_zone", "exam_waiting", "sold_out"]);
+  it("상황별 팁 6종과 도움말 주제 7종, 팁도 두 문장 이내", () => {
+    expect(TUTORIAL_TIPS.map((t) => t.code)).toEqual(["rare_ingredient", "toxin_4", "locked_zone", "exam_waiting", "sold_out", "first_request"]);
     for (const t of TUTORIAL_TIPS) expect(sentences(t.text), t.text).toBeLessThanOrEqual(2);
     expect(HELP_TOPICS.map((t) => t.code)).toEqual(["market", "taste_map", "methods", "toxin", "stall", "orders", "floors"]);
     for (const h of HELP_TOPICS) expect(h.body.length).toBeGreaterThan(20);

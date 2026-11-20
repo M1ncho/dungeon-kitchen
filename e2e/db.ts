@@ -49,6 +49,29 @@ export async function skipTutorialOf(nickname: string) {
     .where(eq(schema.tutorialProgress.userId, p.id));
 }
 
+/** 상황별 팁 하나를 "아직 안 본" 상태로 되돌린다 (createAccount 는 팁을 모두 본 것으로 만든다). */
+export async function unseeTip(nickname: string, code: string) {
+  const { db, schema } = await load();
+  const [p] = await db.select({ id: schema.profiles.id }).from(schema.profiles).where(eq(schema.profiles.nickname, nickname));
+  const [t] = await db.select({ seen: schema.tutorialProgress.seenTips }).from(schema.tutorialProgress).where(eq(schema.tutorialProgress.userId, p.id));
+  await db.update(schema.tutorialProgress).set({ seenTips: (t?.seen ?? []).filter((c) => c !== code) }).where(eq(schema.tutorialProgress.userId, p.id));
+}
+
+/** 의뢰의 결과 확률을 한 가지로 고정한다 (e2e 가 결과를 정해 놓고 수령 흐름을 검증할 때). */
+export async function forceRequestOutcome(requestId: string, outcome: "success" | "partial" | "fail") {
+  const { db, schema } = await load();
+  const o = { success: [10000, 0, 0], partial: [0, 10000, 0], fail: [0, 0, 10000] }[outcome];
+  await db.update(schema.ingredientRequests).set({ successBp: o[0], partialBp: o[1], failBp: o[2] }).where(eq(schema.ingredientRequests.id, requestId));
+}
+
+/** 이 유저의 의뢰 기록 (등록 순서). */
+export async function readRequests(nickname: string) {
+  const { db, schema } = await load();
+  const [p] = await db.select({ id: schema.profiles.id }).from(schema.profiles).where(eq(schema.profiles.nickname, nickname));
+  const rows = await db.select().from(schema.ingredientRequests).where(eq(schema.ingredientRequests.userId, p.id));
+  return rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+}
+
 /** 이 유저의 안내 진행 상태. */
 export async function readTutorial(nickname: string) {
   const { db, schema } = await load();

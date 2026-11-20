@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { serverNow } from "./clock";
+import { requestTimeScale, serverNow } from "./clock";
 import { validateEnv } from "./env";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -59,5 +59,40 @@ describe("serverNow", () => {
     vi.stubEnv("NEON_AUTH_BASE_URL", "https://example.com/auth");
     vi.stubEnv("NEON_AUTH_COOKIE_SECRET", "0123456789012345678901234567890123456789");
     expect(() => validateEnv()).toThrow(/E2E_FIXED_NOW/);
+  });
+});
+
+describe("requestTimeScale (의뢰 게시판 시간 배율, 개발·테스트 전용)", () => {
+  it("설정이 없거나 이상한 값이면 1 (배율 없음)", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("REQUEST_TIME_SCALE", "");
+    expect(requestTimeScale()).toBe(1);
+    for (const bad of ["abc", "0", "-5", "NaN"]) {
+      vi.stubEnv("REQUEST_TIME_SCALE", bad);
+      expect(requestTimeScale(), bad).toBe(1);
+    }
+  });
+
+  it("개발·테스트 환경에서는 환경 변수 값이 배율이 된다", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("REQUEST_TIME_SCALE", "1800");
+    expect(requestTimeScale()).toBe(1800);
+  });
+
+  it("production 에서는 설정돼 있어도 항상 1 이다", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("REQUEST_TIME_SCALE", "1800");
+    expect(requestTimeScale()).toBe(1);
+  });
+
+  it("production 에서 REQUEST_TIME_SCALE 이 설정돼 있으면 서버 시작 검증이 막는다", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("REQUEST_TIME_SCALE", "1800");
+    vi.stubEnv("DATABASE_URL", "postgresql://u:p@h/db");
+    vi.stubEnv("NEON_AUTH_BASE_URL", "https://example.com/auth");
+    vi.stubEnv("NEON_AUTH_COOKIE_SECRET", "0123456789012345678901234567890123456789");
+    expect(() => validateEnv()).toThrow(/REQUEST_TIME_SCALE/);
+    vi.stubEnv("REQUEST_TIME_SCALE", "");
+    expect(() => validateEnv()).not.toThrow();
   });
 });

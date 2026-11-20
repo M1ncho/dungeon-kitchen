@@ -1,36 +1,36 @@
 import { expect, test } from "@playwright/test";
 import { createAccount } from "./helpers";
 
-test("홈: 시설 타일 선택에 따라 안내판이 바뀌고, 미구현 시설은 비활성", async ({ page }) => {
+test("홈: 타일을 누르면 바로 이동하고, 안내판은 마우스를 올렸을 때 미리보기로만 보이며, 준비 중 시설은 토스트", async ({ page }) => {
   await createAccount(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
 
   const board = page.getByTestId("facility-board");
-  const go = page.getByTestId("facility-go");
+  await expect(page.getByTestId("facility-go")).toHaveCount(0); // 2단계 이동 버튼은 없다
 
-  // 기본 선택은 재료 시장 (구현됨 → 이동 가능)
-  await expect(board).toContainText("재료 시장");
-  await expect(go).toBeEnabled();
-  await expect(page.getByTestId("facility-tile-MKT")).toHaveAttribute("aria-pressed", "true");
+  // 마우스를 올리면 그 시설의 미리보기가 보인다
+  await expect(board).toContainText("마우스를 올리면");
+  await page.getByTestId("facility-tile-KIT").hover();
+  await expect(board).toContainText("주방");
+  await page.getByTestId("facility-tile-REQ").hover();
+  await expect(board).toContainText("의뢰 게시판");
 
-  // 주방·창고는 구현되어 이동할 수 있다
-  for (const [code, name] of [["KIT", "주방"], ["INV", "창고"], ["STL", "포장마차"]] as const) {
+  // 누르면 바로 이동한다
+  for (const [code, url] of [["MKT", /\/market$/], ["KIT", /\/kitchen$/], ["STL", /\/stall$/], ["REQ", /\/board$/], ["INV", /\/inventory$/]] as const) {
     await page.getByTestId(`facility-tile-${code}`).click();
-    await expect(board).toContainText(name);
-    await expect(go).toBeEnabled();
+    await expect(page).toHaveURL(url);
+    await page.getByRole("link", { name: "홈으로" }).click();
+    await expect(page).toHaveURL(/\/$/);
   }
 
-  // 미구현 시설을 고르면 안내판이 바뀌고 이동 버튼이 "준비 중이에요" 로 비활성
-  for (const [code, name] of [["REQ", "의뢰 게시판"]] as const) {
-    await page.getByTestId(`facility-tile-${code}`).click();
-    await expect(board).toContainText(name);
-    await expect(go).toBeDisabled();
-    await expect(go).toHaveText("준비 중이에요");
-    await expect(page.getByTestId(`facility-tile-${code}`)).toHaveAttribute("aria-pressed", "true");
-  }
+  // 준비 중인 시설은 이동하지 않고 짧은 토스트가 뜬다
+  await page.getByTestId("facility-tile-GDE").click();
+  await expect(page.getByText("준비 중이에요")).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
 
-  // 다시 재료 시장을 고르면 이동할 수 있다
-  await page.getByTestId("facility-tile-MKT").click();
-  await expect(go).toBeEnabled();
+  // 모바일: 하단 안내판은 숨겨진다
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(board).toBeHidden();
 
   // 보유 재료 바: 처음에는 비어 있다
   await expect(page.getByTestId("inventory-bar")).toBeVisible();

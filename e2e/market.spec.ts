@@ -13,8 +13,7 @@ test("재료 시장: 기본 식재료 구매 → 행상 품목 구매 → 인벤
   await expect(summary.getByTestId("countdown")).toBeVisible();
 
   // 재료 시장 진입 (홈의 시설 타일 선택 → 안내판의 이동 버튼)
-  await page.getByTestId("facility-tile-MKT").click();
-  await page.getByTestId("facility-go").click();
+  await page.getByTestId("facility-tile-MKT").click(); // 타일을 누르면 바로 이동한다
   await expect(page).toHaveURL(/\/market$/);
   await expect(page.getByRole("link", { name: "홈으로" })).toBeVisible(); // 다른 화면의 HUD 에는 "홈으로" 버튼이 있다
   await expect(page.getByTestId("peddler-card")).toHaveCount(2);

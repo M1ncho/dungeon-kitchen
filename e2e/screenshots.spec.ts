@@ -38,9 +38,8 @@ test("홈 화면 캡처 (데스크톱 1440 / 모바일 390)", async ({ page }) =
   await settle(page);
   await page.screenshot({ path: "screenshots/home-desktop-1440.png", fullPage: true });
 
-  await page.getByTestId("facility-tile-KIT").click();
+  await page.getByTestId("facility-tile-KIT").hover(); // 데스크톱: 마우스를 올리면 안내판 미리보기
   await page.screenshot({ path: "screenshots/home-desktop-1440-kitchen-selected.png", fullPage: true });
-  await page.getByTestId("facility-tile-MKT").click();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await settle(page);

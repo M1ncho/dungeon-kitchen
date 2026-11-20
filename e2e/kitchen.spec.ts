@@ -23,7 +23,6 @@ test("주방: 시장에서 재료 구매 → 맛 지도로 수프 완성 → 창
   // 홈의 주방 타일로 진입
   await page.getByRole("link", { name: "홈으로" }).click();
   await page.getByTestId("facility-tile-KIT").click();
-  await page.getByTestId("facility-go").click();
   await expect(page).toHaveURL(/\/kitchen$/);
   await expect(page.getByTestId("taste-map")).toBeVisible();
   await expect(page.getByTestId("map-zone")).toHaveCount(10);
