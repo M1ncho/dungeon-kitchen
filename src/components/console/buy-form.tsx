@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,7 +43,14 @@ export function BuyForm({
         </Button>
       </div>
       {state.error && <p className="text-xs text-destructive">{state.error}</p>}
-      {state.message && <p className="text-xs text-emerald-400">{state.message}</p>}
+      {state.message && (
+        <p className="flex items-center gap-2 text-xs text-emerald-400">
+          {state.message}
+          <Link href="/kitchen" data-testid="buy-to-kitchen" className="rounded-md border-2 border-dk-outline bg-dk-lantern px-2 py-0.5 font-display text-[13px] text-dk-outline shadow-[0_2px_0_var(--dk-shadow)]">
+            요리하러 가기
+          </Link>
+        </p>
+      )}
     </form>
   );
 }

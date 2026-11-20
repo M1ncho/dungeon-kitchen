@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Gowun_Dodum, Jua } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
@@ -12,6 +12,9 @@ export const metadata: Metadata = {
   title: "던전 포장마차",
   description: "던전 상업 조합 관리 콘솔",
 };
+
+// 안전 영역(노치·홈 바)까지 그릴 수 있게 한다: 하단 탭 바가 env(safe-area-inset-bottom)로 여백을 둔다
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

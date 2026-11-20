@@ -8,6 +8,7 @@ import { serveOrderCustom } from "@/app/actions/orders";
 import { OrderCard } from "@/components/orders/order-card";
 import { OrderResultDialog } from "@/components/orders/order-result";
 import type { OrderResult, OrderView } from "@/db/commands/orders";
+import { IngredientHint } from "@/components/ingredient/ingredient-info";
 import { IngredientGlyph } from "@/components/cozy/ingredient-glyph";
 import { StarIcon } from "@/components/cozy/icons";
 import { ChunkyButton, CozyBadge, PaperCard, Stamp, WoodPanel } from "@/components/cozy/primitives";
@@ -247,6 +248,7 @@ export function KitchenBoard({
                 const dy = (i.umami - i.mana) * config.kScale;
                 return (
                   <li key={i.id}>
+                   <IngredientHint ingredientId={i.id} infoClassName="bottom-1.5 left-1.5 right-auto">
                     <button
                       type="button"
                       disabled={disabled}
@@ -278,6 +280,7 @@ export function KitchenBoard({
                         ×{left}
                       </span>
                     </button>
+                   </IngredientHint>
                   </li>
                 );
               })}
@@ -388,7 +391,8 @@ function DishReveal({ state, agingMinutes, onClose }: { state: CookState; agingM
         </PaperCard>
         <div className="mt-5 flex flex-wrap justify-center gap-3">
           <ChunkyButton variant="wood" size="sm" onClick={onClose} data-testid="dish-close">계속 요리하기</ChunkyButton>
-          <ChunkyButton size="sm" href="/inventory" data-testid="dish-to-inventory">창고 보기</ChunkyButton>
+          <ChunkyButton variant="wood" size="sm" href="/inventory" data-testid="dish-to-inventory">창고 보기</ChunkyButton>
+          {!dish.aging && <ChunkyButton size="sm" href="/stall" data-testid="dish-to-stall">진열하러 가기</ChunkyButton>}
         </div>
       </WoodPanel>
     </div>

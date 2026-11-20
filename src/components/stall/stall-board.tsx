@@ -250,7 +250,7 @@ function OpenStall({ settings, stacks, session, serverNowMs, order, candidates }
         {soldOut && (
           <PaperCard className="mb-4 flex flex-col items-start gap-2 p-3 sm:flex-row sm:items-center sm:justify-between" data-testid="stall-soldout">
             <p className="font-display text-lg"><Stamp className="mr-2 text-sm">품절</Stamp>진열한 요리가 모두 팔렸어요. 영업은 계속 유지돼요.</p>
-            <ChunkyButton size="sm" href="/kitchen" data-testid="stall-to-kitchen">주방으로 가기</ChunkyButton>
+            <ChunkyButton size="sm" href="/kitchen" data-testid="stall-to-kitchen">주방으로</ChunkyButton>
           </PaperCard>
         )}
 

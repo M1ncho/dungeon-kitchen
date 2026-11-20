@@ -216,3 +216,27 @@
     animation: none;
   }
 }
+
+@keyframes dk-pop {
+  from { opacity: 0; transform: scale(0.94) translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes dk-sheet-up {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes dk-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 모바일 하단 탭 바 높이 (안전 영역 제외). 가로 모드(낮은 화면)에서는 얇게 줄인다. 탭 바·본문 여백·안내 시트가 함께 쓴다. */
+:root { --dk-tabbar: 64px; }
+@media (max-height: 500px) {
+  :root { --dk-tabbar: 46px; }
+}
+:root { --dk-tabbar-pad: 0px; }
+@media (max-width: 1023px) {
+  :root { --dk-tabbar-pad: calc(var(--dk-tabbar) + env(safe-area-inset-bottom)); }
+}

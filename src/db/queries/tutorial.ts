@@ -4,7 +4,7 @@ import { TUTORIAL_RECIPE, fillTokens, stepDef } from "../../lib/game/tutorial";
 import { db } from "../index";
 import { getTutorial } from "../commands/tutorial";
 import {
-  dishZones, dungeonFloors, helpTopics, ingredients, profiles, salesSessions, tutorialLines, tutorialSettings, tutorialTips,
+  dishZones, dungeonFloors, helpTopics, ingredientRequests, ingredients, profiles, salesSessions, tutorialLines, tutorialSettings, tutorialTips,
   userIngredients,
 } from "../schema";
 import { getExamAlert } from "./floors";
@@ -52,7 +52,7 @@ export async function getTutorialPanel(userId: string, serverNowMs: number): Pro
   const pending: string[] = [];
   let lockedZones = false;
   if (unseen.length > 0) {
-    const [rare, exam, status, locked] = await Promise.all([
+    const [rare, exam, status, locked, requested] = await Promise.all([
       unseen.includes("rare_ingredient")
         ? db
             .select({ id: userIngredients.ingredientId })
@@ -69,10 +69,14 @@ export async function getTutorialPanel(userId: string, serverNowMs: number): Pro
             .from(profiles)
             .where(eq(profiles.id, userId))
         : Promise.resolve([]),
+      unseen.includes("first_request")
+        ? db.select({ id: ingredientRequests.id }).from(ingredientRequests).where(eq(ingredientRequests.userId, userId)).limit(1)
+        : Promise.resolve([]),
     ]);
     if (rare.length > 0) pending.push("rare_ingredient");
     if (exam) pending.push("exam_waiting");
     if (status?.state === "soldout") pending.push("sold_out");
+    if (requested.length > 0) pending.push("first_request"); // 첫 의뢰를 붙였을 때
     lockedZones = !!locked[0] && locked[0].unlocked < locked[0].deepest;
   }
 

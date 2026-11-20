@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type ReactNode } from "react";
+import { toast } from "sonner";
 import { Countdown } from "@/components/console/countdown";
 import { CartIcon, FacilityIcon, type FacilityIconKey } from "@/components/cozy/icons";
-import { ChunkyButton, CozyBadge, PaperCard, Stamp, WoodPanel } from "@/components/cozy/primitives";
+import { CozyBadge, PaperCard, Stamp, WoodPanel } from "@/components/cozy/primitives";
 import { cn } from "@/lib/utils";
 
 export type FacilityChip = { label: string; tone: "moss" | "gray" | "lantern" | "crystal" | "paper" };
@@ -39,8 +41,9 @@ export function HomeBody({
   tiles: FacilityTile[];
   nextPeddler: { endsAtMs: number; serverNowMs: number };
 }) {
-  const [selectedCode, setSelectedCode] = useState(tiles[0].code);
-  const selected = tiles.find((t) => t.code === selectedCode) ?? tiles[0];
+  // 타일은 누르면 바로 이동한다. 아래 안내판은 데스크톱에서 마우스를 올린(또는 키보드로 포커스한) 타일의 미리보기일 뿐이다.
+  const [previewCode, setPreviewCode] = useState<string | null>(null);
+  const preview = tiles.find((t) => t.code === previewCode) ?? null;
 
   return (
     <div className="space-y-10">
@@ -58,37 +61,45 @@ export function HomeBody({
           <PaperCard tone="area" className="p-2.5 sm:p-3.5" data-tutorial-target="facilities">
             <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {tiles.map((tile) => {
-                const isSelected = tile.code === selected.code;
-                return (
-                  <button
-                    key={tile.code}
-                    type="button"
-                    aria-pressed={isSelected}
-                    data-testid={`facility-tile-${tile.code}`}
-                    data-tutorial-target={`tile-${tile.code}`}
-                    onClick={() => setSelectedCode(tile.code)}
-                    className={cn(
-                      "relative flex min-h-[136px] flex-col items-center justify-end gap-1 rounded-2xl border-[3px] border-dk-outline px-1 pb-2 pt-6 text-dk-outline sm:min-h-[156px] sm:gap-1.5",
-                      "shadow-[0_5px_0_var(--dk-shadow)] transition-[transform,box-shadow] duration-75 active:translate-y-[3px] active:shadow-[0_2px_0_var(--dk-shadow)]",
-                      "focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-dk-lantern",
-                      isSelected ? "bg-dk-lantern" : "bg-dk-paper",
-                      !tile.implemented && !isSelected && "saturate-50 brightness-95",
-                    )}
-                  >
+                const isPreview = tile.code === previewCode;
+                const common = {
+                  "data-testid": `facility-tile-${tile.code}`,
+                  "data-tutorial-target": `tile-${tile.code}`,
+                  "data-implemented": tile.implemented,
+                  onMouseEnter: () => setPreviewCode(tile.code),
+                  onMouseLeave: () => setPreviewCode((c) => (c === tile.code ? null : c)),
+                  onFocus: () => setPreviewCode(tile.code),
+                  onBlur: () => setPreviewCode((c) => (c === tile.code ? null : c)),
+                  className: cn(
+                    "relative flex min-h-[136px] flex-col items-center justify-end gap-1 rounded-2xl border-[3px] border-dk-outline px-1 pb-2 pt-6 text-dk-outline sm:min-h-[156px] sm:gap-1.5",
+                    "shadow-[0_5px_0_var(--dk-shadow)] transition-[transform,box-shadow] duration-75 active:translate-y-[3px] active:shadow-[0_2px_0_var(--dk-shadow)]",
+                    "focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-dk-lantern",
+                    isPreview ? "bg-dk-lantern" : "bg-dk-paper",
+                    !tile.implemented && !isPreview && "saturate-50 brightness-95",
+                  ),
+                };
+                const inner = (
+                  <>
                     <Stamp className="absolute left-1.5 top-1.5 px-1.5 text-[11px] sm:text-xs">{tile.code}</Stamp>
                     {tile.badge && (
                       <CozyBadge tone="moss" className="absolute -right-1.5 -top-2.5 px-2 text-xs leading-5">
                         {tile.badge}
                       </CozyBadge>
                     )}
-                    <FacilityIcon
-                      name={tile.iconKey}
-                      className={cn("size-11 sm:size-14", !tile.implemented && "opacity-55")}
-                    />
-                    <span className="rounded-md border-[3px] border-dk-outline bg-dk-paper-badge px-1.5 font-display text-[13px] leading-5 sm:text-base sm:leading-6">
+                    <FacilityIcon name={tile.iconKey} className={cn("size-11 sm:size-14", !tile.implemented && "opacity-55")} />
+                    <span className="rounded-md border-[3px] border-dk-outline bg-dk-paper-badge px-1 font-display text-[12px] leading-5 [word-break:keep-all] min-[380px]:px-1.5 min-[380px]:text-[13px] sm:text-base sm:leading-6">
                       {tile.label}
                     </span>
                     <span className="text-[11px] leading-4 text-dk-text-sub sm:text-xs">{tile.status}</span>
+                  </>
+                );
+                return tile.implemented ? (
+                  <Link key={tile.code} href={tile.href} {...common}>
+                    {inner}
+                  </Link>
+                ) : (
+                  <button key={tile.code} type="button" onClick={() => toast("준비 중이에요", { id: "facility-soon", duration: 1800 })} {...common}>
+                    {inner}
                   </button>
                 );
               })}
@@ -97,40 +108,33 @@ export function HomeBody({
         </WoodPanel>
       </div>
 
+      {/* 미리보기 안내판: 데스크톱에서만. 타일 위에 마우스를 올리면 그 시설 설명이 보인다 (모바일에서는 숨김) */}
       <PaperCard
-        className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:gap-6 sm:p-5"
+        className="hidden min-h-[132px] items-center gap-6 p-5 lg:flex"
         data-testid="facility-board"
         aria-live="polite"
       >
-        <div className="flex items-center gap-4">
-          <FacilityIcon name={selected.iconKey} className="size-16 shrink-0 sm:size-20" />
-          <div className="sm:hidden">
-            <Stamp>{selected.code}</Stamp>
-            <h3 className="mt-1 font-display text-2xl">{selected.label}</h3>
-          </div>
-        </div>
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="hidden items-center gap-3 sm:flex">
-            <Stamp>{selected.code}</Stamp>
-            <h3 className="font-display text-2xl">{selected.label}</h3>
-          </div>
-          <p className="text-base text-dk-text-sub">{selected.description}</p>
-          <div className="flex flex-wrap gap-2.5 pb-1">
-            {selected.chips.map((chip) => (
-              <CozyBadge key={chip.label} tone={chip.tone} className="text-sm">
-                {chip.label}
-              </CozyBadge>
-            ))}
-          </div>
-        </div>
-        <ChunkyButton
-          href={selected.href}
-          disabled={!selected.implemented}
-          data-testid="facility-go"
-          className="w-full sm:w-auto sm:min-w-44"
-        >
-          {selected.implemented ? `${selected.label}으로 이동` : "준비 중이에요"}
-        </ChunkyButton>
+        {preview ? (
+          <>
+            <FacilityIcon name={preview.iconKey} className="size-20 shrink-0" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="flex items-center gap-3">
+                <Stamp>{preview.code}</Stamp>
+                <h3 className="font-display text-2xl">{preview.label}</h3>
+              </div>
+              <p className="text-base text-dk-text-sub">{preview.description}</p>
+              <div className="flex flex-wrap gap-2.5 pb-1">
+                {preview.chips.map((chip) => (
+                  <CozyBadge key={chip.label} tone={chip.tone} className="text-sm">
+                    {chip.label}
+                  </CozyBadge>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+          <p className="w-full text-center font-display text-lg text-dk-text-sub">시설에 마우스를 올리면 설명이 보여요. 누르면 바로 이동해요.</p>
+        )}
       </PaperCard>
     </div>
   );

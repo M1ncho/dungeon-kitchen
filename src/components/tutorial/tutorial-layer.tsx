@@ -1,11 +1,13 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useTransition, type MutableRefObject, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition, type MutableRefObject, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { dismissTip, nextTutorialStep, skipTutorialAction } from "@/app/actions/tutorial";
 import { ChunkyButton } from "@/components/cozy/primitives";
 import type { TutorialLineView, TutorialPanel } from "@/db/queries/tutorial";
 import { fillTokens, onStepRoute } from "@/lib/game/tutorial";
+import { cn } from "@/lib/utils";
+import { findTarget, placeBubble, type Placement, type Side } from "./placement";
 import { GuildmasterPortrait } from "./portrait";
 
 // 첫 플레이 안내와 상황별 팁의 화면 계층. 콘솔 레이아웃이 서버에서 만든 panel(진행 상태·대사)을 받아 그린다.
@@ -49,24 +51,48 @@ const SKIP_TEXT = "건너뛰면 다시 볼 수 없어요. 도움말에서 내용
 const SKIP_NOTE = "첫 손님과 첫 주문 손님 안내도 함께 사라져요.";
 
 // ───── 강조 ─────
-// 설명하는 말풍선("다음" 버튼이 있는 것)에서는 대상 주변만 밝게, 나머지는 살짝 어둡게 한다.
+// 설명하는 말풍선("다음" 버튼이 있는 것)에서는 대상 주변만 밝게, 나머지는 어둡게 한다.
 // 플레이어가 직접 해야 하는 구간(행동 안내, 길 안내, 다시 해 보라는 안내)에서는 화면을 어둡게 깔지 않고 대상 테두리만 보여 준다.
 
-function Spotlight({ target, dim }: { target: string; dim: boolean }) {
-  const [rect, setRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+/** 하단 탭 바가 차지하는 높이(px). globals.css 의 --dk-tabbar(가로 모드에서는 더 얇다). 탭 바가 없는 넓은 화면(lg↑)은 0. */
+function tabBarPx(): number {
+  if (typeof window === "undefined" || window.innerWidth >= 1024) return 0;
+  const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dk-tabbar"));
+  return Number.isFinite(v) ? v : 64;
+}
+const HUD_INSET = 72; // 상단 HUD 가 가리는 높이
+
+type Box = { left: number; top: number; width: number; height: number };
+
+function useMobile() {
+  return useSyncExternalStore(
+    (cb) => {
+      const m = window.matchMedia("(max-width: 639px)");
+      m.addEventListener("change", cb);
+      return () => m.removeEventListener("change", cb);
+    },
+    () => window.matchMedia("(max-width: 639px)").matches,
+    () => false,
+  );
+}
+
+/** 대상 요소의 화면 위치. 대상이 처음 나타난 때 한 번, 말풍선·시트에 가리지 않는 자리로 스크롤한다. */
+function useTargetRect(target: string, reserve: { top: number; bottom: number }): Box | null {
+  const [rect, setRect] = useState<Box | null>(null);
+  const reserveRef = useRef(reserve);
+  useEffect(() => { reserveRef.current = reserve; });
 
   useEffect(() => {
     let last = "";
     let scrolled = false;
     const timers: ReturnType<typeof setTimeout>[] = [];
-    // 대상이 화면 밖이거나 말풍선에 가려질 자리면 스크롤해서 보이게 한다. 대상이 처음 나타난 때 한 번만 (사용자가 스크롤하는 걸 방해하지 않게).
-    // 화면이 스트리밍으로 늦게 그려져도 대상이 생긴 순간을 기준으로 하므로 놓치지 않는다.
     const ensureVisible = (el: Element) => {
       const r = el.getBoundingClientRect();
-      if (r.top < 72 || r.bottom > window.innerHeight - 230) window.scrollTo({ top: window.scrollY + r.top - 110, behavior: "smooth" });
+      const { top, bottom } = reserveRef.current; // top: 위쪽 가림(HUD), bottom: 아래쪽 가림(시트·탭 바·말풍선이 붙을 자리)
+      if (r.top < top + 8 || r.bottom > window.innerHeight - bottom) window.scrollTo({ top: window.scrollY + r.top - (top + 24), behavior: "smooth" });
     };
     const update = () => {
-      const el = document.querySelector(`[data-tutorial-target="${target}"]`);
+      const el = findTarget(target);
       if (!el) {
         if (last !== "none") { last = "none"; setRect(null); }
         return;
@@ -91,7 +117,10 @@ function Spotlight({ target, dim }: { target: string; dim: boolean }) {
     };
   }, [target]);
 
-  if (!rect) return null;
+  return target ? rect : null;
+}
+
+function Spotlight({ target, rect, dim }: { target: string; rect: Box; dim: boolean }) {
   return (
     <div
       aria-hidden="true"
@@ -101,7 +130,7 @@ function Spotlight({ target, dim }: { target: string; dim: boolean }) {
       className="pointer-events-none fixed z-40 rounded-2xl outline-4 outline-dk-lantern"
       style={{
         left: rect.left - 6, top: rect.top - 6, width: rect.width + 12, height: rect.height + 12,
-        boxShadow: dim ? "0 0 0 9999px rgba(30, 20, 16, 0.45)" : "0 0 14px 2px rgba(255, 181, 46, 0.55)", outlineStyle: "solid",
+        boxShadow: dim ? "0 0 0 9999px rgba(30, 20, 16, 0.62)" : "0 0 14px 2px rgba(255, 181, 46, 0.55)", outlineStyle: "solid",
       }}
     />
   );
@@ -126,20 +155,56 @@ type Bubble = {
   countdown: number | null;
 };
 
-function BubbleView({ bubble, guide, pending, onSkip, onLocalNext }: { bubble: Bubble; guide: { name: string; title: string }; pending: boolean; onSkip: () => Promise<void>; onLocalNext: () => void }) {
+type Layout =
+  | { mode: "sheet" } // 모바일: 하단 시트 (탭 바 위)
+  | { mode: "center" } // 대상이 없는 안내: 화면 가운데
+  | { mode: "corner" } // 대상이 없는 행동 안내·팁: 오른쪽 아래
+  | { mode: "attached"; placement: Placement | null }; // 대상 옆
+
+const TAIL: Record<Exclude<Side, "free">, string> = {
+  below: "-top-[11px] border-l-[3px] border-t-[3px]",
+  above: "-bottom-[11px] border-b-[3px] border-r-[3px]",
+  right: "-left-[11px] border-b-[3px] border-l-[3px]",
+  left: "-right-[11px] border-r-[3px] border-t-[3px]",
+};
+
+function BubbleView({ bubble, guide, pending, onSkip, onLocalNext, layout, innerRef }: { bubble: Bubble; guide: { name: string; title: string }; pending: boolean; onSkip: () => Promise<void>; onLocalNext: () => void; layout: Layout; innerRef: (el: HTMLDivElement | null) => void }) {
   const [confirming, setConfirming] = useState(false);
   const [skipping, startSkip] = useTransition();
+  const pl = layout.mode === "attached" ? layout.placement : null;
+  const placed = layout.mode === "attached" && pl && pl.side !== "free";
+  const tailStyle = pl && pl.side !== "free" ? (pl.side === "below" || pl.side === "above" ? { left: pl.tail - 8 } : { top: pl.tail - 8 }) : undefined;
+
+  const pos: React.CSSProperties =
+    layout.mode === "sheet"
+      ? { left: 12, right: 12, bottom: "calc(var(--dk-tabbar) + 10px + env(safe-area-inset-bottom))" }
+      : layout.mode === "center"
+        ? { left: "50%", top: "50%", translate: "-50% -50%" }
+        : layout.mode === "corner"
+          ? { right: 20, bottom: "calc(20px + var(--dk-tabbar-pad))" }
+          : pl
+            ? { left: pl.left, top: pl.top }
+            : { right: 20, bottom: "calc(20px + var(--dk-tabbar-pad))", visibility: "hidden" };
 
   return (
     <div
+      ref={innerRef}
       role="status"
       aria-live="polite"
       data-testid={bubble.testId}
       data-step={bubble.step}
       data-phase={bubble.phase}
       data-kind={bubble.kind}
-      className="fixed inset-x-3 bottom-3 z-[45] mx-auto max-h-[46vh] max-w-xl overflow-y-auto rounded-2xl border-[3px] border-dk-outline bg-dk-paper p-3 text-dk-outline shadow-[0_5px_0_var(--dk-shadow)] sm:inset-x-auto sm:bottom-5 sm:right-5 sm:mx-0 sm:w-[26rem] sm:p-4"
+      data-layout={layout.mode === "attached" ? `attached-${pl?.side ?? "pending"}` : layout.mode}
+      style={pos}
+      className={cn(
+        "fixed z-[45] rounded-2xl border-[3px] border-dk-outline bg-dk-paper p-3 text-dk-outline shadow-[0_5px_0_var(--dk-shadow)] sm:p-4",
+        layout.mode === "sheet" ? "max-h-[46dvh] overflow-y-auto mx-auto max-w-xl motion-safe:animate-[dk-sheet-up_220ms_ease-out]" : "w-[min(26rem,calc(100vw-24px))] motion-safe:animate-[dk-pop_180ms_ease-out]",
+      )}
     >
+      {placed && pl && pl.side !== "free" && (
+        <span aria-hidden="true" data-testid="tutorial-tail" style={tailStyle} className={cn("absolute size-4 rotate-45 border-dk-outline bg-dk-paper", TAIL[pl.side])} />
+      )}
       <div className="flex items-start gap-3">
         <GuildmasterPortrait className="size-14 sm:size-16" label={guide.name} />
         <div className="min-w-0 flex-1 space-y-2">
@@ -299,9 +364,9 @@ export function TutorialProvider({ panel, children }: { panel: TutorialPanel; ch
   const bubblePhase = bubble?.phase ?? "";
   useEffect(() => {
     if (!bubbleTarget) return;
-    const exists = (t: string) => !!document.querySelector(`[data-tutorial-target="${t}"]`);
+    const exists = (t: string) => !!findTarget(t);
     const resolve = () => {
-      const t = exists(bubbleTarget) ? bubbleTarget : bubblePhase === "nav" && exists("nav-home") ? "nav-home" : bubbleTarget;
+      const t = exists(bubbleTarget) ? bubbleTarget : bubblePhase === "nav" && exists("tab-HOME") ? "tab-HOME" : bubbleTarget;
       setResolved((p) => (p.key === bubbleKey && p.target === t ? p : { key: bubbleKey, target: t }));
     };
     const first = setTimeout(resolve, 0);
@@ -311,14 +376,50 @@ export function TutorialProvider({ panel, children }: { panel: TutorialPanel; ch
   const target = bubble && bubbleTarget && resolved.key === bubbleKey ? resolved.target : "";
 
   const guide = panel.guide;
-  const spacer = !!bubble; // 말풍선이 본문 맨 아래를 가리지 않게 여백을 준다
+  const mobile = useMobile();
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const [viewport, setViewport] = useState<{ w: number; h: number }>({ w: 1280, h: 800 });
+  const observer = useRef<ResizeObserver | null>(null);
+  const measure = useCallback((el: HTMLDivElement | null) => {
+    observer.current?.disconnect();
+    observer.current = null;
+    if (!el) return;
+    const read = () => setSize((p) => (p && p.w === el.offsetWidth && p.h === el.offsetHeight ? p : { w: el.offsetWidth, h: el.offsetHeight }));
+    read();
+    observer.current = new ResizeObserver(read);
+    observer.current.observe(el);
+  }, []);
+  useEffect(() => {
+    const read = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
+    read();
+    window.addEventListener("resize", read);
+    return () => window.removeEventListener("resize", read);
+  }, []);
+
+  // 모바일 시트가 대상(과 탭 바)을 가리지 않게, 시트 높이만큼 아래를 비워 두고 스크롤한다
+  const tabBar = tabBarPx();
+  const sheetH = mobile && bubble ? (size?.h ?? 180) + tabBar + 20 : 0;
+  const rect = useTargetRect(target, { top: HUD_INSET, bottom: mobile ? sheetH : (size?.h ?? 160) + 24 + tabBar });
+
+  let layout: Layout;
+  if (mobile) layout = { mode: "sheet" };
+  else if (bubble && rect && size) layout = { mode: "attached", placement: placeBubble({ rect, size, viewport, topInset: HUD_INSET, bottomInset: tabBar }) };
+  else if (bubble && !bubbleTarget && bubble.testId === "tutorial-bubble" && bubble.kind === "say") layout = { mode: "center" }; // 인사·마무리: 대상 없음
+  else if (bubble && !bubbleTarget) layout = { mode: "corner" };
+  else layout = { mode: "attached", placement: null }; // 대상이 아직 안 보이면 자리를 잡을 때까지 숨김
+  // 대상이 지정됐지만 끝내 화면에 없으면(예: 다른 화면 요소) 구석에 둔다
+  if (layout.mode === "attached" && !layout.placement && bubble && (!bubbleTarget || (resolved.key === bubbleKey && !rect && bubbleTarget))) layout = { mode: "corner" };
+
+  const dim = !!bubble && bubble.testId === "tutorial-bubble" && !!bubble.nextLabel;
+  const centered = layout.mode === "center";
 
   return (
     <TutorialContext.Provider value={ctx}>
       {children}
-      {spacer && <div aria-hidden="true" className="h-56 sm:h-24" />}
-      {bubble && target && <Spotlight target={target} dim={bubble.testId === "tutorial-bubble" && !!bubble.nextLabel} />}
-      {bubble && <BubbleView key={bubble.key} bubble={bubble} guide={guide} pending={pending} onSkip={skip} onLocalNext={runLocalNext} />}
+      {bubble && <div aria-hidden="true" data-testid="tutorial-spacer" style={{ height: mobile ? sheetH : layout.mode === "attached" || layout.mode === "corner" ? 96 : 0 }} className="lg:hidden" />}
+      {bubble && centered && dim && <div aria-hidden="true" data-testid="tutorial-backdrop" className="pointer-events-none fixed inset-0 z-40 bg-[rgba(30,20,16,0.62)] motion-safe:animate-[dk-fade_180ms_ease-out]" />}
+      {bubble && target && rect && <Spotlight target={target} rect={rect} dim={dim} />}
+      {bubble && <BubbleView key={bubble.key} bubble={bubble} guide={guide} pending={pending} onSkip={skip} onLocalNext={runLocalNext} layout={layout} innerRef={measure} />}
     </TutorialContext.Provider>
   );
 }
