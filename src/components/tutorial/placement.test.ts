@@ -38,4 +38,14 @@ describe("placeBubble", () => {
     expect(p.side).toBe("right");
     expect(p.left).toBe(88 + 16);
   });
+  it("대상이 화면 위로 완전히 벗어나면 화면 밖에 두지 않고 구석에 둔다", () => {
+    const p = placeBubble({ rect: { left: 300, top: -600, width: 400, height: 200 }, size, viewport: vp, topInset: 72 });
+    expect(p.side).toBe("free");
+    expect(p.top).toBeGreaterThanOrEqual(72);
+  });
+  it("대상이 화면 아래로 벗어나도 마찬가지", () => {
+    const p = placeBubble({ rect: { left: 300, top: 1500, width: 400, height: 200 }, size, viewport: vp });
+    expect(p.side).toBe("free");
+    expect(p.top + size.h).toBeLessThanOrEqual(vp.h - 12);
+  });
 });

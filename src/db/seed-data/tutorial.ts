@@ -50,7 +50,7 @@ say("intro", 2, "", "여긴 던전 상업 지구라네. 자네는 이 포장마�
 // 1. 홈
 say("home", 1, "hud", "위쪽 나무판을 보게. 골드와 평판, 그리고 자네 가게가 있는 층이 적혀 있다네.");
 say("home", 2, "shop-window", "저게 자네 포장마차일세. 영업을 시작하면 지나가던 손님들이 저기서 기웃거릴 걸세.");
-say("home", 3, "facilities", "이 타일들이 자네 시설일세. 누르면 바로 들어가고, 화면 옆(작은 화면에선 아래)의 탭으로도 오갈 수 있다네.");
+say("home", 3, "facilities", "이 타일들이 자네 시설일세. 누르면 바로 들어가고, 다른 화면에선 옆(작은 화면에선 아래)의 탭으로 오갈 수 있다네.");
 // 2. 재료 시장
 say("market_info", 1, "market-staples", "여기선 기본 식재료를 언제든 살 수 있다네. 시간마다 모험가 행상도 들르니 귀한 재료는 그쪽에서 구하게.");
 mission("market_buy", 1, "market-staples", "던전 버섯 1개와 소금 1개를 구매하세요 ({n}/2)");
@@ -83,17 +83,17 @@ say("order_done", 1, "", "잘했네! 손님 마음을 읽는 건 경험이 쌓�
 say("finale", 1, "floors-map", "지금 자네 가게는 {floor}층일세. 평판이 {nextRep}쯤 쌓이면 {nextFloor}층으로 오르는 승급 시험을 볼 수 있다네.");
 say("finale", 2, "floors-map", "깊은 층일수록 손님도 재료도 값어치가 커지니, 이제부터는 자네 뜻대로 해 보게. 건투를 비네!");
 // 길 안내: 이 단계의 화면이 아닌 곳에 있을 때
-say("intro", 1, "tab-HOME", "먼저 '홈' 탭을 눌러 돌아오게. 자네 가게 앞에서 이야기하세.", "nav");
-say("home", 1, "tab-HOME", "먼저 '홈' 탭을 눌러 돌아오게. 자네 가게 앞에서 이야기하세.", "nav");
-say("market_info", 1, "tab-MKT", "먼저 재료 시장으로 가 보게. '시장' 탭을 누르면 된다네.", "nav");
-say("market_buy", 1, "tab-MKT", "'시장' 탭을 눌러 던전 버섯과 소금을 사 오게.", "nav");
-say("kitchen_cook", 1, "tab-KIT", "좋네! 이제 '주방' 탭을 눌러 수프를 끓여 보게.", "nav");
-say("kitchen_done", 1, "tab-KIT", "'주방' 탭으로 돌아가 보게. 자네 첫 수프가 기다리고 있다네.", "nav");
-say("stall_open", 1, "tab-STL", "수프가 준비됐군. '포장마차' 탭을 눌러 영업을 열어 보세.", "nav");
-say("wait_sale", 1, "tab-STL", "'포장마차' 탭을 눌러 첫 손님을 기다려 보게.", "nav");
-say("sale_done", 1, "tab-STL", "'포장마차' 탭으로 돌아가 보게. 손님이 다녀갔다네.", "nav");
-say("order_info", 1, "tab-STL", "'포장마차' 탭을 눌러 보게. 주문 손님이 와 있다네.", "nav");
-say("order_serve", 1, "tab-STL", "'포장마차' 탭을 눌러 보게. 주문 손님이 기다리고 있다네.", "nav");
+say("intro", 1, "tab-HOME", "먼저 '홈'으로 돌아오게. 자네 가게 앞에서 이야기하세.", "nav");
+say("home", 1, "tab-HOME", "먼저 '홈'으로 돌아오게. 자네 가게 앞에서 이야기하세.", "nav");
+say("market_info", 1, "tab-MKT", "먼저 재료 시장으로 가 보게. 강조된 '시장'을 누르면 된다네.", "nav");
+say("market_buy", 1, "tab-MKT", "'시장'으로 가서 던전 버섯과 소금을 사 오게.", "nav");
+say("kitchen_cook", 1, "tab-KIT", "좋네! 이제 '주방'으로 가서 수프를 끓여 보게.", "nav");
+say("kitchen_done", 1, "tab-KIT", "'주방'으로 돌아가 보게. 자네 첫 수프가 기다리고 있다네.", "nav");
+say("stall_open", 1, "tab-STL", "수프가 준비됐군. '포장마차'로 가서 영업을 열어 보세.", "nav");
+say("wait_sale", 1, "tab-STL", "'포장마차'로 가서 첫 손님을 기다려 보게.", "nav");
+say("sale_done", 1, "tab-STL", "'포장마차'로 돌아가 보게. 손님이 다녀갔다네.", "nav");
+say("order_info", 1, "tab-STL", "'포장마차'로 가 보게. 주문 손님이 와 있다네.", "nav");
+say("order_serve", 1, "tab-STL", "'포장마차'로 가 보게. 주문 손님이 기다리고 있다네.", "nav");
 say("finale", 1, "hud-floor", "위쪽의 층 표시를 눌러 던전 층 지도를 보게. 다음 목표가 거기 있다네.", "nav");
 
 export const TUTORIAL_LINES: readonly TutorialLine[] = L;

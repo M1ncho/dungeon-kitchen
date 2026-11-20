@@ -23,19 +23,20 @@ export function placeBubble(opts: {
   const options: Record<Exclude<Side, "free">, () => Placement | null> = {
     below: () => {
       const top = rect.top + rect.height + gap;
-      if (top + size.h > bottom0) return null;
+      if (top < top0 || top + size.h > bottom0) return null;
       const left = xFit(cx - size.w / 2);
       return { left, top, side: "below", tail: clamp(cx - left, TAIL_PAD, size.w - TAIL_PAD) };
     },
     above: () => {
       const top = rect.top - gap - size.h;
-      if (top < top0) return null;
+      if (top < top0 || top + size.h > bottom0) return null;
       const left = xFit(cx - size.w / 2);
       return { left, top, side: "above", tail: clamp(cx - left, TAIL_PAD, size.w - TAIL_PAD) };
     },
     right: () => {
       const left = rect.left + rect.width + gap;
       if (left + size.w > viewport.w - margin) return null;
+      if (rect.top > bottom0 || rect.top + rect.height < top0) return null;
       const top = yFit(cy - size.h / 2);
       return { left, top, side: "right", tail: clamp(cy - top, TAIL_PAD, size.h - TAIL_PAD) };
     },
@@ -46,6 +47,10 @@ export function placeBubble(opts: {
       return { left, top, side: "left", tail: clamp(cy - top, TAIL_PAD, size.h - TAIL_PAD) };
     },
   };
+
+  // 대상이 화면 밖(위·아래)에 있으면 붙일 곳이 없다: 구석에 둔다 (대상이 보이면 다시 따라간다)
+  const offscreen = rect.top + rect.height < top0 || rect.top > bottom0;
+  if (offscreen) return { left: xFit(viewport.w - size.w - margin), top: yFit(bottom0 - size.h), side: "free", tail: 0 };
 
   // 대상이 화면 위쪽 절반이면 아래를, 아래쪽 절반이면 위를 먼저 시도한다 (반대편은 그다음)
   const upper = cy < (top0 + bottom0) / 2;

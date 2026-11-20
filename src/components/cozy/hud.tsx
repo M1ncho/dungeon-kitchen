@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { signOut } from "@/app/actions/auth";
 import type { CookProfile } from "@/lib/session";
-import { HudHomeLink } from "./hud-home-link";
 import { CoinIcon, GearIcon, HelpIcon, LogoutIcon, StallIcon, StarIcon } from "./icons";
 import { ChunkyButton, CozyBadge } from "./primitives";
 
@@ -28,7 +27,6 @@ export function Hud({ cook }: { cook: CookProfile }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          <HudHomeLink />
           <CozyBadge data-testid="gold" aria-label="골드" className="h-10 gap-1.5 pl-1.5 text-base">
             <CoinIcon className="size-7" />
             {cook.gold.toLocaleString()} G

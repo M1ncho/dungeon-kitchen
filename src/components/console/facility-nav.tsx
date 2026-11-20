@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { FacilityIcon, HomeIcon } from "@/components/cozy/icons";
-import { Stamp } from "@/components/cozy/primitives";
 import type { NavBadge, NavData } from "@/db/queries/nav";
 import { cn } from "@/lib/utils";
 import { FACILITIES } from "./nav";
@@ -29,6 +28,9 @@ const TONE: Record<NavBadge["tone"], string> = {
   moss: "bg-dk-moss text-dk-outline",
   lantern: "bg-dk-lantern text-dk-outline",
 };
+
+/** 뱃지는 작은 원형: 숫자가 있으면 숫자, 없으면 "!" (전체 문구는 접근성 이름·툴팁·숨김 텍스트로 남긴다) */
+const badgeGlyph = (text: string) => text.match(/\d+/)?.[0] ?? "!";
 
 const SEEN_KEY = "dk-seen-peddler-slot";
 const SEEN_EVENT = "dk-seen-peddler";
@@ -70,74 +72,80 @@ export function FacilityNav({ data }: { data: NavData }) {
     const badge = badgeOf(item);
     const base = {
       "data-testid": `tab-${item.key}`,
-      "data-tutorial-target": layout === "side" ? `tab-${item.key}` : `tab-${item.key}`,
+      "data-tutorial-target": `tab-${item.key}`,
       "data-active": active,
       "aria-current": active ? ("page" as const) : undefined,
     };
-    const icon = item.icon === "home" ? <HomeIcon className={layout === "side" ? "size-8" : "size-7"} /> : <FacilityIcon name={item.icon} className={layout === "side" ? "size-9" : "size-7"} />;
+    const side = layout === "side";
+    const iconEl = item.icon === "home" ? <HomeIcon className={side ? "size-8" : "size-6"} /> : <FacilityIcon name={item.icon} className={side ? "size-8" : "size-6"} />;
     const badgeEl = badge && (
       <span
         data-testid={`tab-badge-${item.key}`}
+        title={badge.text}
         className={cn(
-          "pointer-events-none absolute whitespace-nowrap rounded-full border-2 border-dk-outline px-1.5 font-display text-[10px] leading-4 shadow-[0_2px_0_var(--dk-shadow)]",
-          layout === "side" ? "-right-1 -top-2" : "-top-2.5 left-1/2 -translate-x-1/2",
+          "pointer-events-none absolute grid size-[18px] place-items-center rounded-full border-2 border-dk-outline font-display text-[11px] leading-none shadow-[0_2px_0_var(--dk-shadow)]",
+          side ? "-right-1.5 -top-1.5" : "-right-1 -top-1",
           TONE[badge.tone],
         )}
       >
-        {badge.text}
+        <span aria-hidden="true">{badgeGlyph(badge.text)}</span>
+        <span className="sr-only">{badge.text}</span>
       </span>
     );
-
-    if (layout === "side") {
-      const cls = cn(
-        "relative flex w-full flex-col items-center gap-0.5 rounded-r-2xl border-[3px] border-l-0 border-dk-outline py-2 pl-1.5 pr-1 text-dk-outline",
-        "shadow-[0_4px_0_var(--dk-shadow)] transition-[transform,background-color] duration-100 hover:brightness-105",
-        active ? "w-[88px] translate-x-0 bg-dk-lantern" : "-translate-x-1.5 bg-dk-paper",
-        !item.implemented && "saturate-50",
-      );
-      const inner = (
-        <>
-          {icon}
-          <Stamp className="px-1 text-[10px]">{item.code === "HOME" ? "HOME" : item.code}</Stamp>
-          <span className="font-display text-sm leading-4">{item.short}</span>
+    // 아이콘은 크림색 둥근 칸 안에 (현재 화면에서는 칸 없이 랜턴색 책갈피 위에 그대로)
+    const inner = (
+      <>
+        <span className={cn("relative grid place-items-center rounded-xl", side ? "size-11" : "size-8", active ? "bg-dk-paper/70" : "bg-dk-paper", !item.implemented && "opacity-70")}>
+          {iconEl}
           {badgeEl}
-        </>
-      );
-      return item.implemented ? (
-        <Link key={item.key} href={item.href} {...base} className={cls} title={item.label}>{inner}</Link>
-      ) : (
-        <button key={item.key} type="button" {...base} className={cls} onClick={() => toast("준비 중이에요", { id: "facility-soon", duration: 1800 })}>{inner}</button>
-      );
-    }
-    return (
-      <Link
-        key={item.key}
-        href={item.href}
-        {...base}
-        className={cn(
-          "relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl border-[3px] border-transparent px-0.5 py-1 text-dk-outline",
-          active ? "border-dk-outline bg-dk-lantern shadow-[0_3px_0_var(--dk-shadow)]" : "active:bg-dk-lantern/60",
-        )}
-      >
-        {icon}
-        <span className="truncate font-display text-[11px] leading-3.5 [@media(max-height:500px)]:sr-only">{item.short}</span>
-        {badgeEl}
-      </Link>
+        </span>
+        <span className={cn("font-display leading-4", side ? "text-[14px]" : "text-[11px] [@media(max-height:500px)]:sr-only", active ? "text-dk-outline" : "text-dk-paper")}>{item.short}</span>
+      </>
+    );
+
+    const cls = side
+      ? cn(
+          "relative flex flex-col items-center gap-0.5 rounded-xl border-[3px] py-1.5",
+          // 현재 화면: 오른쪽으로 22px 튀어나와 본문을 가리키는 책갈피
+          active
+            ? "w-[calc(100%+33px)] self-start border-dk-outline bg-dk-lantern pr-[33px] shadow-[0_3px_0_var(--dk-shadow)]"
+            : "w-full self-start border-transparent hover:bg-dk-paper/10",
+        )
+      : cn(
+          "relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl border-[3px] px-0.5 py-0.5",
+          active ? "border-dk-outline bg-dk-lantern shadow-[0_3px_0_var(--dk-shadow)]" : "border-transparent active:bg-dk-paper/15",
+        );
+
+    return item.implemented ? (
+      <Link key={item.key} href={item.href} {...base} className={cls} title={item.label}>{inner}</Link>
+    ) : (
+      <button key={item.key} type="button" {...base} className={cls} title={item.label} onClick={() => toast("준비 중이에요", { id: "facility-soon", duration: 1800 })}>{inner}</button>
     );
   };
 
   return (
     <>
-      <nav aria-label="시설 이동" data-testid="facility-nav-side" className="sticky top-6 hidden w-[88px] shrink-0 flex-col gap-2.5 self-start pt-8 lg:flex">
-        {DESKTOP.map((i) => renderItem(i, "side"))}
-      </nav>
+      {/* 데스크톱: 나무 선반 레일. 홈 화면에는 두지 않는다 (홈에는 시설 타일이 있다) */}
+      {pathname !== "/" && (
+        <nav
+          aria-label="시설 이동"
+          data-testid="facility-nav-side"
+          className="dk-rail sticky top-6 mr-[34px] mt-8 hidden w-24 shrink-0 self-start rounded-[18px] border-[3px] border-dk-outline p-2 shadow-[0_5px_0_var(--dk-shadow)] lg:block"
+        >
+          <div className="flex flex-col gap-1.5">
+            {renderItem(HOME, "side")}
+            <hr className="my-0.5 border-0 border-t-[3px] border-dk-outline/70" />
+            {DESKTOP.slice(1).map((i) => renderItem(i, "side"))}
+          </div>
+        </nav>
+      )}
       <nav
         aria-label="시설 이동"
         data-testid="facility-nav-bottom"
-        className="dk-plank-bar fixed inset-x-0 bottom-0 z-40 border-t-[3px] border-dk-outline px-2 py-1 shadow-[0_-4px_0_var(--dk-shadow)] lg:hidden"
+        className="dk-rail fixed inset-x-0 bottom-0 z-40 border-t-[3px] border-dk-outline px-2 py-1 shadow-[0_-4px_0_var(--dk-shadow)] lg:hidden"
         style={{ height: "calc(var(--dk-tabbar) + env(safe-area-inset-bottom))", paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        <div className="mx-auto flex h-full max-w-xl items-stretch gap-1 rounded-2xl bg-dk-paper-badge/90 px-1">{MOBILE.map((i) => renderItem(i, "bottom"))}</div>
+        <div className="mx-auto flex h-full max-w-xl items-stretch gap-1 px-1">{MOBILE.map((i) => renderItem(i, "bottom"))}</div>
       </nav>
     </>
   );

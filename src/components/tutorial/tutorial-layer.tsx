@@ -77,7 +77,7 @@ function useMobile() {
 }
 
 /** 대상 요소의 화면 위치. 대상이 처음 나타난 때 한 번, 말풍선·시트에 가리지 않는 자리로 스크롤한다. */
-function useTargetRect(target: string, reserve: { top: number; bottom: number }): Box | null {
+function useTargetRect(target: string, reserve: { top: number; bottom: number }, scrollKey: string): Box | null {
   const [rect, setRect] = useState<Box | null>(null);
   const reserveRef = useRef(reserve);
   useEffect(() => { reserveRef.current = reserve; });
@@ -115,7 +115,7 @@ function useTargetRect(target: string, reserve: { top: number; bottom: number })
       window.removeEventListener("scroll", update, true);
       window.removeEventListener("resize", update);
     };
-  }, [target]);
+  }, [target, scrollKey]); // 같은 대상이라도 새 말풍선이 뜨면 다시 한 번 보이는 자리로 스크롤한다
 
   return target ? rect : null;
 }
@@ -356,7 +356,7 @@ export function TutorialProvider({ panel, children }: { panel: TutorialPanel; ch
     };
   }, [active, pathname, localPhase, local, infoIdx, nowMs, panel, dismissed, toxin, router]);
 
-  // 길 안내 대상이 이 화면에 없으면(예: 홈 타일은 다른 화면에 없다) 홈으로 가는 버튼을 대신 강조한다.
+  // 길 안내 대상이 이 화면에 없으면(예: 홈 타일은 다른 화면에 없다) 홈 탭을 대신 강조한다.
   // 화면이 그려진 뒤 대상이 생기는 경우도 따라가도록 주기적으로 확인하고, 결과는 말풍선(key)과 짝지어 둔다.
   const [resolved, setResolved] = useState<{ key: string; target: string }>({ key: "", target: "" });
   const bubbleKey = bubble?.key ?? "";
@@ -366,7 +366,9 @@ export function TutorialProvider({ panel, children }: { panel: TutorialPanel; ch
     if (!bubbleTarget) return;
     const exists = (t: string) => !!findTarget(t);
     const resolve = () => {
-      const t = exists(bubbleTarget) ? bubbleTarget : bubblePhase === "nav" && exists("tab-HOME") ? "tab-HOME" : bubbleTarget;
+      // 홈(데스크톱)에는 레일이 없어 탭 대신 같은 시설의 홈 타일을 가리킨다
+      const tile = bubbleTarget.startsWith("tab-") ? `tile-${bubbleTarget.slice(4)}` : "";
+      const t = exists(bubbleTarget) ? bubbleTarget : tile && exists(tile) ? tile : bubblePhase === "nav" && exists("tab-HOME") ? "tab-HOME" : bubbleTarget;
       setResolved((p) => (p.key === bubbleKey && p.target === t ? p : { key: bubbleKey, target: t }));
     };
     const first = setTimeout(resolve, 0);
@@ -399,7 +401,7 @@ export function TutorialProvider({ panel, children }: { panel: TutorialPanel; ch
   // 모바일 시트가 대상(과 탭 바)을 가리지 않게, 시트 높이만큼 아래를 비워 두고 스크롤한다
   const tabBar = tabBarPx();
   const sheetH = mobile && bubble ? (size?.h ?? 180) + tabBar + 20 : 0;
-  const rect = useTargetRect(target, { top: HUD_INSET, bottom: mobile ? sheetH : (size?.h ?? 160) + 24 + tabBar });
+  const rect = useTargetRect(target, { top: HUD_INSET, bottom: mobile ? sheetH : (size?.h ?? 160) + 24 + tabBar }, bubbleKey);
 
   let layout: Layout;
   if (mobile) layout = { mode: "sheet" };
@@ -410,13 +412,16 @@ export function TutorialProvider({ panel, children }: { panel: TutorialPanel; ch
   // 대상이 지정됐지만 끝내 화면에 없으면(예: 다른 화면 요소) 구석에 둔다
   if (layout.mode === "attached" && !layout.placement && bubble && (!bubbleTarget || (resolved.key === bubbleKey && !rect && bubbleTarget))) layout = { mode: "corner" };
 
+  // 말풍선이 본문 맨 아래를 가리지 않게 여백을 준다: 모바일 시트, 구석·꼬리 없는 배치(큰 대상)는 말풍선 높이만큼
+  const floating = layout.mode === "corner" || (layout.mode === "attached" && layout.placement?.side === "free");
+  const spacerH = mobile ? sheetH : floating ? (size?.h ?? 160) + 32 : 0;
   const dim = !!bubble && bubble.testId === "tutorial-bubble" && !!bubble.nextLabel;
   const centered = layout.mode === "center";
 
   return (
     <TutorialContext.Provider value={ctx}>
       {children}
-      {bubble && <div aria-hidden="true" data-testid="tutorial-spacer" style={{ height: mobile ? sheetH : layout.mode === "attached" || layout.mode === "corner" ? 96 : 0 }} className="lg:hidden" />}
+      {bubble && <div aria-hidden="true" data-testid="tutorial-spacer" style={{ height: spacerH }} />}
       {bubble && centered && dim && <div aria-hidden="true" data-testid="tutorial-backdrop" className="pointer-events-none fixed inset-0 z-40 bg-[rgba(30,20,16,0.62)] motion-safe:animate-[dk-fade_180ms_ease-out]" />}
       {bubble && target && rect && <Spotlight target={target} rect={rect} dim={dim} />}
       {bubble && <BubbleView key={bubble.key} bubble={bubble} guide={guide} pending={pending} onSkip={skip} onLocalNext={runLocalNext} layout={layout} innerRef={measure} />}
