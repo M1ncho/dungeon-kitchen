@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { advanceTime, createAccount, readGold, resetTime } from "./helpers";
+import { advanceTime, createAccount, readGold, resetTime, goHome } from "./helpers";
 
 test.afterEach(() => resetTime());
 
@@ -87,7 +87,7 @@ test("포장마차: 진열 → 한 칸 다 팔림 → 빈 칸에 다른 요리 �
   expect(goldAfterSale).toBeGreaterThanOrEqual(0);
 
   // 홈 램프에도 빈 칸 수가 함께 나온다
-  await page.getByRole("link", { name: "홈으로" }).click();
+  await goHome(page);
   await expect(page.getByTestId("sales-lamp")).toHaveAttribute("data-state", "open");
   await expect(page.getByTestId("sales-lamp")).toContainText("영업 중 · 빈 칸 3");
   await page.goto("/stall");
@@ -133,7 +133,7 @@ test("포장마차: 진열 → 한 칸 다 팔림 → 빈 칸에 다른 요리 �
   await expect(page.getByTestId("result-customers")).toBeVisible();
 
   // 팔리지 않은 요리는 모두 창고로: 만든 10개 − 판매 수
-  await page.getByRole("link", { name: "홈으로" }).click();
+  await goHome(page);
   await expect(page.getByTestId("sales-lamp")).toHaveAttribute("data-state", "closed");
   await expect(page.getByTestId("dish-count")).toHaveAttribute("data-count", String(COOKED - total));
   await page.goto("/inventory");
@@ -172,7 +172,7 @@ test("포장마차: 모든 칸이 비면 품절 — 영업은 유지되고 주�
   await expect.poll(() => readGold(page)).toBe(gold);
   await expect(page.getByTestId("stall-sales-count")).toHaveAttribute("data-value", "2");
 
-  await page.getByRole("link", { name: "홈으로" }).click();
+  await goHome(page);
   await expect(page.getByTestId("sales-lamp")).toHaveAttribute("data-state", "soldout");
   await expect(page.getByTestId("sales-lamp")).toContainText("품절");
   await page.goto("/stall");

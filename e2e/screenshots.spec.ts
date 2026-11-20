@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { advanceTime, createAccount, resetTime } from "./helpers";
+import { advanceTime, createAccount, resetTime, goHome } from "./helpers";
 
 // 디자인 확인용 화면 캡처. 평소 e2e 에서는 건너뛰고, `npm run screenshots` 로만 실행한다.
 // 프로덕션 빌드로 찍는다(dev 오버레이 없음): `npm run screenshots` 는 E2E_PROD=1 로 실행된다.
@@ -31,7 +31,7 @@ test("홈 화면 캡처 (데스크톱 1440 / 모바일 390)", async ({ page }) =
     await expect(offer.getByText("구매 완료")).toBeVisible();
   }
 
-  await page.getByRole("link", { name: "홈으로" }).click();
+  await goHome(page);
   await expect(page.getByTestId("inventory-bar")).toBeVisible();
 
   await page.setViewportSize({ width: 1440, height: 900 });

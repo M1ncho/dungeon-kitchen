@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { closeDb, readOrderSecret, restoreOrderSpawnChance, setOrderSpawnChance } from "./db";
-import { advanceTime, createAccount, readGold, resetTime } from "./helpers";
+import { advanceTime, createAccount, readGold, resetTime, goHome } from "./helpers";
 
 // 주문 손님은 확률로 등장하므로 테스트 동안만 등장 확률을 100% 로 바꾸고, 끝나면 원래 값으로 되돌린다.
 let originalChance: Record<number, number> = {};
@@ -100,7 +100,7 @@ test("주문 손님: 영업 → 시각 이동으로 등장 → 힌트 → 맞춤
   expect(secret.status).toBe("waiting");
 
   // 홈: 포장마차 타일과 램프에 주문 손님 대기 표시
-  await page.getByRole("link", { name: "홈으로" }).click();
+  await goHome(page);
   await expect(page.getByTestId("sales-lamp")).toHaveAttribute("data-waiting-order", "true");
   await expect(page.getByTestId("sales-lamp")).toContainText("주문 손님 대기");
   await expect(page.getByTestId("facility-tile-STL")).toContainText("주문 손님");

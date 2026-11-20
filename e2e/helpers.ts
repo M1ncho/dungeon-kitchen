@@ -57,3 +57,9 @@ export function resetTime() {
   mkdirSync("test-results", { recursive: true });
   writeFileSync(TIME_OFFSET_FILE, "0");
 }
+
+/** 홈으로: 데스크톱 레일·모바일 하단 탭 바의 "홈" 탭 (홈 화면에는 데스크톱 레일이 없으니 다른 화면에서 쓴다) */
+export async function goHome(page: Page) {
+  await page.locator('[data-testid="tab-HOME"]:visible').click();
+  await expect(page).toHaveURL(/\/$/);
+}

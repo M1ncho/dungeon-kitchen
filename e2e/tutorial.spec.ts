@@ -1,12 +1,17 @@
 import { mkdirSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 import { closeDb, readTutorial } from "./db";
-import { advanceTime, createAccount, resetTime } from "./helpers";
+import { advanceTime, createAccount, resetTime, goHome } from "./helpers";
 
 // 첫 플레이 안내: 새 계정으로 가입 → 등록 → 안내 0~7단계를 끝까지 완주 (데스크톱·모바일), 다른 계정으로 중간 건너뛰기, 도움말·팁.
 // 각 단계 캡처는 screenshots/tutorial/ 에 저장한다 (git 에는 올리지 않는다).
 test.afterAll(() => closeDb());
 test.afterEach(() => resetTime());
+
+/** 길 안내가 가리키는 대상: 이동 탭이 보이면 탭, 데스크톱 홈(레일 없음)이면 같은 시설의 홈 타일 */
+async function navTarget(page: Page, code: string) {
+  return (await page.locator(`[data-testid="tab-${code}"]:visible`).count()) ? `tab-${code}` : `tile-${code}`;
+}
 
 const bubble = (page: Page) => page.getByTestId("tutorial-bubble");
 const spotlight = (page: Page) => page.getByTestId("tutorial-spotlight");
@@ -64,9 +69,11 @@ async function walk(page: Page, tag: "desktop" | "mobile") {
     n += 1;
     await page.screenshot({ path: `screenshots/tutorial/${tag}-${String(n).padStart(2, "0")}-${name}.png` });
   };
-  const goHome = () => page.getByRole("link", { name: "홈으로" }).click();
+  const goHomeTab = () => goHome(page);
   const goTile = async (code: string, url: RegExp) => {
-    await page.locator(`[data-testid="tab-${code}"]:visible`).click(); // 이동 탭 (데스크톱 왼쪽 / 모바일 하단)
+    const tab = page.locator(`[data-testid="tab-${code}"]:visible`); // 이동 탭 (데스크톱 왼쪽 레일 / 모바일 하단)
+    if (await tab.count()) await tab.click();
+    else await page.getByTestId(`facility-tile-${code}`).click(); // 데스크톱 홈에는 레일이 없고 타일이 있다
     await expect(page).toHaveURL(url);
   };
 
@@ -92,7 +99,7 @@ async function walk(page: Page, tag: "desktop" | "mobile") {
 
   // ── 2. 재료 시장 ── (홈에 있으니 길 안내: 시장 타일 강조)
   await expectBubble(page, "market_info", "nav");
-  await expectLayoutOk(page, "tab-MKT");
+  await expectLayoutOk(page, await navTarget(page, "MKT"));
   await expect(spotlight(page)).toHaveAttribute("data-dim", "false"); // 직접 해야 하는 구간(길 안내)은 어둡게 깔지 않는다
   await snap("2-nav-market");
   await goTile("MKT", /\/market$/);
@@ -114,9 +121,9 @@ async function walk(page: Page, tag: "desktop" | "mobile") {
   await snap("2-nav-kitchen");
 
   // ── 3. 주방 ──
-  await goHome();
+  await goHomeTab();
   await expectBubble(page, "kitchen_cook", "nav");
-  await expectLayoutOk(page, "tab-KIT");
+  await expectLayoutOk(page, await navTarget(page, "KIT"));
   await goTile("KIT", /\/kitchen$/);
   await expectBubble(page, "kitchen_cook", "pick1");
   await expectLayoutOk(page, "kitchen-ingredients");
@@ -168,8 +175,8 @@ async function walk(page: Page, tag: "desktop" | "mobile") {
   await page.getByTestId("dish-close").click();
 
   // ── 4. 포장마차 ──
-  await goHome();
-  await expectLayoutOk(page, "tab-STL");
+  await goHomeTab();
+  await expectLayoutOk(page, await navTarget(page, "STL"));
   await goTile("STL", /\/stall$/);
   await expectBubble(page, "stall_open", "display");
   await expectLayoutOk(page, "stall-slots");

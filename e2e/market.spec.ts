@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createAccount, readGold } from "./helpers";
+import { createAccount, readGold, goHome } from "./helpers";
 
 const START_GOLD = 200;
 
@@ -15,7 +15,7 @@ test("재료 시장: 기본 식재료 구매 → 행상 품목 구매 → 인벤
   // 재료 시장 진입 (홈의 시설 타일 선택 → 안내판의 이동 버튼)
   await page.getByTestId("facility-tile-MKT").click(); // 타일을 누르면 바로 이동한다
   await expect(page).toHaveURL(/\/market$/);
-  await expect(page.getByRole("link", { name: "홈으로" })).toBeVisible(); // 다른 화면의 HUD 에는 "홈으로" 버튼이 있다
+  await expect(page.locator('[data-testid="tab-HOME"]:visible')).toBeVisible(); // 다른 화면에는 이동 탭의 홈이 있다
   await expect(page.getByTestId("peddler-card")).toHaveCount(2);
   await expect(page.getByTestId("inventory-row")).toHaveCount(0);
 
@@ -69,7 +69,7 @@ test("재료 시장: 기본 식재료 구매 → 행상 품목 구매 → 인벤
   );
 
   // 홈으로 돌아오면 HUD 골드와 보유 재료 바가 같은 상태를 보여 준다
-  await page.getByRole("link", { name: "홈으로" }).click();
+  await goHome(page);
   await expect(page).toHaveURL(/\/$/);
   await expect.poll(() => readGold(page)).toBe(goldAfter);
   await expect(page.getByTestId("inventory-slot")).toHaveCount(2);

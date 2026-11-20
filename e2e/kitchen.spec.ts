@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createAccount, readGold } from "./helpers";
+import { createAccount, readGold, goHome } from "./helpers";
 
 async function buyStaple(page: Page, name: string, qty: number) {
   const row = page.getByTestId("staple-row").filter({ has: page.getByText(name, { exact: true }) });
@@ -21,7 +21,7 @@ test("주방: 시장에서 재료 구매 → 맛 지도로 수프 완성 → 창
   const goldAfterShopping = await readGold(page);
 
   // 홈의 주방 타일로 진입
-  await page.getByRole("link", { name: "홈으로" }).click();
+  await goHome(page);
   await page.getByTestId("facility-tile-KIT").click();
   await expect(page).toHaveURL(/\/kitchen$/);
   await expect(page.getByTestId("taste-map")).toBeVisible();
@@ -97,7 +97,7 @@ test("주방: 시장에서 재료 구매 → 맛 지도로 수프 완성 → 창
   await expect(page.getByTestId("dish-total")).toHaveAttribute("data-count", "2");
 
   // 홈에는 요리 수량만 숫자로 표시된다
-  await page.getByRole("link", { name: "홈으로" }).click();
+  await goHome(page);
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("dish-count")).toHaveAttribute("data-count", "2");
   await expect(page.getByTestId("dish-count")).toHaveText("요리 2개");

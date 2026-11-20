@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createAccount } from "./helpers";
+import { createAccount, goHome } from "./helpers";
 
 test("홈: 타일을 누르면 바로 이동하고, 안내판은 마우스를 올렸을 때 미리보기로만 보이며, 준비 중 시설은 토스트", async ({ page }) => {
   await createAccount(page);
@@ -19,7 +19,7 @@ test("홈: 타일을 누르면 바로 이동하고, 안내판은 마우스를 �
   for (const [code, url] of [["MKT", /\/market$/], ["KIT", /\/kitchen$/], ["STL", /\/stall$/], ["REQ", /\/board$/], ["INV", /\/inventory$/]] as const) {
     await page.getByTestId(`facility-tile-${code}`).click();
     await expect(page).toHaveURL(url);
-    await page.getByRole("link", { name: "홈으로" }).click();
+    await goHome(page);
     await expect(page).toHaveURL(/\/$/);
   }
 

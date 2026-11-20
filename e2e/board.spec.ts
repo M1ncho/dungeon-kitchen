@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { closeDb, forceRequestOutcome, readRequests, setProfile, unseeTip } from "./db";
-import { advanceTime, createAccount, readGold, resetTime } from "./helpers";
+import { advanceTime, createAccount, readGold, resetTime, goHome } from "./helpers";
 
 // 의뢰 게시판: 의뢰 등록 → 시간 배율로 완료 → 수령 → 창고에 재료 추가.
 // 개발 서버는 REQUEST_TIME_SCALE=1800 (30분 의뢰가 1초, playwright.config.ts)으로 뜬다. production 빌드(E2E_PROD)는 배율을 무시하므로 건너뛴다.
@@ -95,7 +95,7 @@ test("의뢰 게시판: 등록(확률 실시간) → 완료 → 수령(성공·�
   await page.screenshot({ path: "screenshots/board-ready.png" });
 
   // 홈: 돌아온 의뢰 뱃지
-  await page.getByRole("link", { name: "홈으로" }).click();
+  await goHome(page);
   await expect(page.getByTestId("facility-tile-REQ")).toContainText("완료 2");
   await page.getByTestId("facility-tile-REQ").click();
   await expect(page).toHaveURL(/\/board$/);
