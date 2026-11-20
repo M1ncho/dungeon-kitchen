@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { PageFallback } from "@/components/console/page-fallback";
 import { CollectForm } from "@/components/inventory/collect-form";
 import { Stars } from "@/components/kitchen/kitchen-board";
+import { IngredientHint } from "@/components/ingredient/ingredient-info";
 import { IngredientGlyph } from "@/components/cozy/ingredient-glyph";
 import { CozyBadge, PaperCard, Stamp, WoodPanel } from "@/components/cozy/primitives";
 import { getAgingDishes, getCollectedDishes } from "@/db/queries/kitchen";
@@ -74,8 +75,9 @@ async function InventoryContent() {
         ) : (
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-x-3 gap-y-5">
             {ingredients.map((i) => (
-              <li
-                key={i.ingredientId}
+              <li key={i.ingredientId}>
+               <IngredientHint ingredientId={i.ingredientId} infoClassName="bottom-1.5 left-1.5 right-auto">
+              <div
                 data-testid="inventory-row"
                 data-ingredient-id={i.ingredientId}
                 data-quantity={i.quantity}
@@ -86,6 +88,8 @@ async function InventoryContent() {
                 <span className="absolute -right-2 -top-3 rounded-full border-[3px] border-dk-outline bg-dk-lantern px-2 font-display text-sm leading-5 shadow-[0_3px_0_var(--dk-shadow)]">
                   ×{i.quantity}
                 </span>
+              </div>
+               </IngredientHint>
               </li>
             ))}
           </ul>

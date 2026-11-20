@@ -6,20 +6,23 @@ import { ShopScene } from "@/components/cozy/shop-scene";
 import { ChunkyButton, PaperCard, StatusLamp, WoodPanel } from "@/components/cozy/primitives";
 import { HomeBody, type FacilityTile } from "@/components/home/home-body";
 import { InventoryBar } from "@/components/home/inventory-bar";
+import { getBoardSummary } from "@/db/queries/board";
 import { getCollectedDishCount } from "@/db/queries/kitchen";
 import { getExamAlert } from "@/db/queries/floors";
 import { getSalesStatus } from "@/db/queries/stall";
 import { getInventory, getPeddlerSnapshot } from "@/db/queries/market";
+import { serverNow } from "@/lib/clock";
 import { requireCook } from "@/lib/session";
 
 async function HomeContent() {
   const cook = await requireCook();
-  const [snapshot, inventory, dishCount, sales, examAlert] = await Promise.all([
+  const [snapshot, inventory, dishCount, sales, examAlert, board] = await Promise.all([
     getPeddlerSnapshot(cook.id),
     getInventory(cook.id),
     getCollectedDishCount(cook.id),
     getSalesStatus(cook.id),
     getExamAlert(cook.id),
+    getBoardSummary(cook.id, serverNow()),
   ]);
 
   const shopName = cook.shop?.name ?? "무명 포장마차";
@@ -57,6 +60,16 @@ async function HomeContent() {
           { label, tone: salesStatus === "open" ? "moss" : salesStatus === "soldout" ? "lantern" : "gray" },
           ...(sales.waitingOrder ? [{ label: "주문 손님 대기", tone: "crystal" as const }] : []),
         ],
+      };
+    }
+    if (f.code === "REQ") {
+      // 의뢰 게시판: 붙여 둔 의뢰 수, 돌아온(수령 대기) 의뢰가 있으면 뱃지
+      const label = board.ready > 0 ? `돌아온 의뢰 ${board.ready}` : board.active > 0 ? `의뢰 ${board.active}/${board.max}` : "의뢰 가능";
+      return {
+        ...f,
+        status: label,
+        badge: board.ready > 0 ? `완료 ${board.ready}` : undefined,
+        chips: [{ label: "이용 가능", tone: "moss" }, { label, tone: board.ready > 0 ? "lantern" : "gray" }],
       };
     }
     if (f.code === "KIT") {

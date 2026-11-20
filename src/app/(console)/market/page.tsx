@@ -6,6 +6,7 @@ import { AttributeChips } from "@/components/console/attribute-chips";
 import { BuyForm } from "@/components/console/buy-form";
 import { Countdown } from "@/components/console/countdown";
 import { PageFallback } from "@/components/console/page-fallback";
+import { IngredientHint } from "@/components/ingredient/ingredient-info";
 import { IngredientIcon } from "@/components/console/ingredient-icon";
 import { RarityBadge } from "@/components/console/rarity-badge";
 import { MAX_PURCHASE_QUANTITY } from "@/db/commands/purchase";
@@ -68,11 +69,11 @@ async function MarketContent() {
                       data-remaining={remaining}
                     >
                       <div className="min-w-0 space-y-1">
-                        <div className="flex items-center gap-2 text-sm font-medium">
+                        <IngredientHint ingredientId={o.ingredientId} className="flex items-center gap-2 text-sm font-medium" infoClassName="static shrink-0">
                           <IngredientIcon name={o.icon} className="size-4 shrink-0 text-muted-foreground" />
                           <span className="truncate">{o.name}</span>
                           <RarityBadge rarity={o.rarity} />
-                        </div>
+                        </IngredientHint>
                         <AttributeChips attrs={o} />
                         <div className="font-mono text-xs text-muted-foreground">
                           {o.price.toLocaleString()} G · 남은 수량 {remaining}
@@ -107,10 +108,10 @@ async function MarketContent() {
               data-price={s.price}
             >
               <div className="min-w-0 space-y-1">
-                <div className="flex items-center gap-2 text-sm font-medium">
+                <IngredientHint ingredientId={s.id} className="flex items-center gap-2 text-sm font-medium" infoClassName="static shrink-0">
                   <IngredientIcon name={s.icon} className="size-4 shrink-0 text-muted-foreground" />
                   <span>{s.name}</span>
-                </div>
+                </IngredientHint>
                 <AttributeChips attrs={s} />
                 <div className="font-mono text-xs text-muted-foreground">{s.price.toLocaleString()} G</div>
               </div>
@@ -137,11 +138,11 @@ async function MarketContent() {
               data-quantity={i.quantity}
             >
               <div className="min-w-0 space-y-1">
-                <div className="flex items-center gap-2 text-sm font-medium">
+                <IngredientHint ingredientId={i.ingredientId} className="flex items-center gap-2 text-sm font-medium" infoClassName="static shrink-0">
                   <IngredientIcon name={i.icon} className="size-4 shrink-0 text-muted-foreground" />
                   <span>{i.name}</span>
                   <RarityBadge rarity={i.rarity} />
-                </div>
+                </IngredientHint>
                 <AttributeChips attrs={i} />
               </div>
               <span className="font-mono text-sm">×{i.quantity}</span>
