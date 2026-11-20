@@ -59,7 +59,7 @@ export async function closeWaitingOrders(tx: Tx, sessionId: string, endedAt: Dat
  * 첫 플레이 안내 주문: 안내 세션의 첫 틱(틱 0)이 끝나는 시각에 조합장이 쉬운 주문을 들고 온다 (유저당 1회, 부분 유니크 인덱스).
  * 안내를 건너뛴 유저에게는 만들지 않는다. 문장은 시드 `세션 id:0:order:tutorial` 로 결정적이고, 독성 상한은 가장 느슨하게, 판정 범위는 넉넉하게 한다.
  */
-async function spawnTutorialOrder(tx: Tx, session: typeof salesSessions.$inferSelect, now: Date) {
+export async function spawnTutorialOrder(tx: Tx, session: typeof salesSessions.$inferSelect, now: Date) {
   const tut = await getTutorial(tx, session.userId);
   if (!tut || tut.status !== "active" || tut.step !== "wait_sale") return;
   const [[customer], [ts], settings, dict] = await Promise.all([
@@ -91,17 +91,24 @@ async function spawnTutorialOrder(tx: Tx, session: typeof salesSessions.$inferSe
     .onConflictDoNothing();
 }
 
-export async function spawnOrders(tx: Tx, session: typeof salesSessions.$inferSelect, fromTick: number, toTick: number, now: Date) {
-  if (toTick <= fromTick) return;
-  if (session.isTutorial && fromTick === 0) {
-    await spawnTutorialOrder(tx, session, now);
-    fromTick = 1; // 안내 세션의 틱 0 은 안내 주문이 차지한다 (같은 틱에 일반 주문은 없다)
-    if (toTick <= fromTick) return;
-  }
+/** 영업 정산이 틱 단위로 주문 손님을 등장시키는 도구. 미식 평론가의 변장 주문(critic)도 같은 틱 규칙 위에서 자리를 얻는다. */
+export type CriticOrderRequest = { id: string; customerId: number; seed: string };
+/** critic: 평론가가 이 틱의 주문 손님이 됨 / regular: 일반 주문 손님 등장 / none: 등장 없음 / blocked: 대기 중인 손님이 있어 등장할 수 없음 */
+export type SpawnResult = "critic" | "regular" | "none" | "blocked";
+export type OrderSpawner = {
+  /** 이 층의 주문 손님 유형 중에 있는가 (평론가가 이 유형으로 주문 변장할 수 있는가) */
+  canOrder(customerId: number): boolean;
+  /** 틱 번호 순서대로 한 번씩 부른다 (같은 결과를 내려면 정산을 몇 번에 나눠 하든 틱 순서가 같아야 한다). */
+  spawnAt(tick: number, critic?: CriticOrderRequest): SpawnResult;
+  flush(): Promise<void>;
+};
+
+/** 주문 손님 등장 도구. 이 층에 주문 손님이 오지 않으면(등장 확률 0, 손님 유형 없음) null. */
+export async function createOrderSpawner(tx: Tx, session: typeof salesSessions.$inferSelect, now: Date): Promise<OrderSpawner | null> {
   const [settings, dict] = await Promise.all([loadOrderSettings(tx), loadOrderDictionaries(tx)]);
   // 등장 확률과 판정 범위 배율은 영업을 시작한 층 기준 (깊은 층일수록 자주 오고 까다롭다)
   const [floor] = await tx.select().from(dungeonFloors).where(eq(dungeonFloors.id, session.floorId));
-  if (!floor || floor.orderSpawnBp <= 0) return;
+  if (!floor || floor.orderSpawnBp <= 0) return null;
   const config = toOrderConfig(settings);
 
   const customerRows = await tx
@@ -115,7 +122,7 @@ export async function spawnOrders(tx: Tx, session: typeof salesSessions.$inferSe
     // 이 층의 재료로 닿는 영역만 쓴다 (minFloor)
     profile: { code: c.code, style: c.orderStyle, regions: c.orderRegions.filter((r) => (r.minFloor ?? 1) <= floor.floorNo) } satisfies OrderCustomerType,
   }));
-  if (customers.length === 0) return;
+  if (customers.length === 0) return null;
 
   const existing = await tx
     .select({ arrivesAt: specialOrders.arrivesAt, expiresAt: specialOrders.expiresAt, endedAt: specialOrders.endedAt })
@@ -127,25 +134,58 @@ export async function spawnOrders(tx: Tx, session: typeof salesSessions.$inferSe
   const tickMs = session.tickSeconds * 1000;
   const rows: (typeof specialOrders.$inferInsert)[] = [];
 
-  for (let tick = fromTick; tick < toTick; tick++) {
-    const arrives = startedMs + (tick + 1) * tickMs; // 틱이 끝나는 시각에 도착한다
-    if (spans.filter((s) => s.from <= arrives && arrives < s.to).length >= settings.maxWaiting) continue;
-    const seed = `${session.id}:${tick}:order`;
-    if (!rollOrderSpawn(seed, floor.orderSpawnBp)) continue;
-    const customer = pickOrderCustomer(seed, customers);
-    if (!customer) continue;
-    const order = generateOrder(`${seed}:gen`, customer.profile, dict, config);
+  return {
+    canOrder: (customerId) => customers.some((c) => c.id === customerId),
+    spawnAt(tick, critic) {
+      const arrives = startedMs + (tick + 1) * tickMs; // 틱이 끝나는 시각에 도착한다
+      if (spans.filter((s) => s.from <= arrives && arrives < s.to).length >= settings.maxWaiting) return "blocked";
+      const expires = arrives + settings.waitSeconds * 1000;
+      const gone = expires <= now.getTime(); // 접속하지 않은 사이에 이미 떠났다
+      const seed = `${session.id}:${tick}:order`;
 
-    const expires = arrives + settings.waitSeconds * 1000;
-    const gone = expires <= now.getTime(); // 접속하지 않은 사이에 이미 떠났다
-    spans.push({ from: arrives, to: expires });
-    rows.push({
-      userId: session.userId, sessionId: session.id, tick, customerTypeId: customer.id, kind: "order", judgeScale: floor.orderJudgeScale,
-      status: gone ? "expired" : "waiting",
-      targetX: order.target.x, targetY: order.target.y, toxinCap: order.target.toxinCap,
-      orderText: order.text, hintText: order.hint,
-      arrivesAt: new Date(arrives), expiresAt: new Date(expires), endedAt: gone ? new Date(expires) : null,
-    });
+      let customer: (typeof customers)[number] | null | undefined;
+      let genSeed: string;
+      let id: string | undefined;
+      if (critic) {
+        // 평론가의 변장 주문: 이 틱의 일반 주문 굴림은 건너뛰고(같은 틱에 두 주문은 없다) 같은 흐름·같은 모양의 주문 손님이 된다
+        customer = customers.find((c) => c.id === critic.customerId);
+        if (!customer) return "none";
+        genSeed = `${critic.seed}:gen`;
+        id = critic.id;
+      } else {
+        if (!rollOrderSpawn(seed, floor.orderSpawnBp)) return "none";
+        customer = pickOrderCustomer(seed, customers);
+        if (!customer) return "none";
+        genSeed = `${seed}:gen`;
+      }
+      const order = generateOrder(genSeed, customer.profile, dict, config);
+      spans.push({ from: arrives, to: expires });
+      rows.push({
+        ...(id ? { id } : {}),
+        userId: session.userId, sessionId: session.id, tick, customerTypeId: customer.id, kind: "order", judgeScale: floor.orderJudgeScale,
+        status: gone ? "expired" : "waiting",
+        targetX: order.target.x, targetY: order.target.y, toxinCap: order.target.toxinCap,
+        orderText: order.text, hintText: order.hint,
+        arrivesAt: new Date(arrives), expiresAt: new Date(expires), endedAt: gone ? new Date(expires) : null,
+      });
+      return critic ? "critic" : "regular";
+    },
+    async flush() {
+      if (rows.length) await tx.insert(specialOrders).values(rows).onConflictDoNothing();
+      rows.length = 0;
+    },
+  };
+}
+
+export async function spawnOrders(tx: Tx, session: typeof salesSessions.$inferSelect, fromTick: number, toTick: number, now: Date) {
+  if (toTick <= fromTick) return;
+  if (session.isTutorial && fromTick === 0) {
+    await spawnTutorialOrder(tx, session, now);
+    fromTick = 1; // 안내 세션의 틱 0 은 안내 주문이 차지한다 (같은 틱에 일반 주문은 없다)
+    if (toTick <= fromTick) return;
   }
-  if (rows.length) await tx.insert(specialOrders).values(rows).onConflictDoNothing();
+  const spawner = await createOrderSpawner(tx, session, now);
+  if (!spawner) return;
+  for (let tick = fromTick; tick < toTick; tick++) spawner.spawnAt(tick);
+  await spawner.flush();
 }

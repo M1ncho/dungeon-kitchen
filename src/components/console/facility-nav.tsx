@@ -63,7 +63,7 @@ export function FacilityNav({ data }: { data: NavData }) {
     if (item.key === "MKT") {
       return data.peddler.count > 0 && seen !== String(data.peddler.slotKey) && !pathname.startsWith("/market") ? { text: "행상 도착", tone: "moss" } : undefined;
     }
-    if (item.key === "HOME" || item.key === "REQ" || item.key === "STL") return data.badges[item.key];
+    if (item.key === "HOME" || item.key === "REQ" || item.key === "STL" || item.key === "GDE") return data.badges[item.key];
     return undefined;
   };
 

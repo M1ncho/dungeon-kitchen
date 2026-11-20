@@ -1,4 +1,5 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { resolveCriticOrders } from "./critic";
 import { simulateCooking, type CookingProblem } from "../../lib/game/cooking";
 import { examPassed } from "../../lib/game/floors";
 import {
@@ -198,6 +199,7 @@ async function finishOrder(
     })
     .where(eq(specialOrders.id, input.orderId));
 
+  await resolveCriticOrders(tx, input.userId); // 변장한 평론가의 주문이었다면 평가를 확정한다 (응대 결과는 클라이언트로 나가지 않는다)
   if (input.claimed.isTutorial) await onTutorialOrderServed(tx, input.userId); // 첫 플레이 안내: 서버 이벤트
 
   const target = { x: input.claimed.targetX, y: input.claimed.targetY, toxinCap: input.claimed.toxinCap };

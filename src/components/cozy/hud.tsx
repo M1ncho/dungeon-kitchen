@@ -38,7 +38,7 @@ export function Hud({ cook }: { cook: CookProfile }) {
           <ChunkyButton href="/help" variant="wood" size="icon" aria-label="도움말" title="조합장의 도움말" data-testid="hud-help">
             <HelpIcon className="size-7" />
           </ChunkyButton>
-          <ChunkyButton variant="wood" size="icon" disabled aria-label="설정" title="설정 (준비 중)">
+          <ChunkyButton href="/settings" variant="wood" size="icon" aria-label="설정" title="설정" data-testid="hud-settings">
             <GearIcon className="size-7" />
           </ChunkyButton>
           <form action={signOut}>

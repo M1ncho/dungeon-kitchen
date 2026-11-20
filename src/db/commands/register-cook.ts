@@ -1,11 +1,12 @@
 import { asc, eq } from "drizzle-orm";
+import { containsForbidden } from "../../lib/forbidden-words";
 import type { Database } from "../index";
 import { dungeonFloors, profiles, shops } from "../schema";
 import { startTutorial } from "./tutorial";
 
 export type RegisterCookResult =
   | { ok: true }
-  | { ok: false; reason: "invalid_nickname" | "invalid_shop_name" | "nickname_taken" | "already_registered" | "no_floor" };
+  | { ok: false; reason: "invalid_nickname" | "invalid_shop_name" | "forbidden_word" | "nickname_taken" | "already_registered" | "no_floor" };
 
 // Database 대신 최소 인터페이스(transaction)만 요구해 테스트에서 다른 드라이버로 대체할 수 있다.
 type Db = Pick<Database, "transaction">;
@@ -39,6 +40,8 @@ export async function registerCook(
   const shopName = normalizeName(input.shopName);
   if (!validLength(nickname, 2, 12)) return { ok: false, reason: "invalid_nickname" };
   if (!validLength(shopName, 2, 20)) return { ok: false, reason: "invalid_shop_name" };
+  // 가게 이름과 닉네임은 가이드북에 공개되므로 금지어가 든 이름은 받지 않는다
+  if (containsForbidden(nickname) || containsForbidden(shopName)) return { ok: false, reason: "forbidden_word" };
 
   try {
     return await db.transaction(async (tx): Promise<RegisterCookResult> => {

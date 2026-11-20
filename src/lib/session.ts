@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/db";
 import { ensureExamOrder } from "@/db/commands/exams";
+import { publishDueCriticReviews } from "@/db/commands/critic";
 import { settleSessions } from "@/db/commands/sales";
 import { healTutorial } from "@/db/commands/tutorial";
 import { getFoodStall, getProfile } from "@/db/queries/player";
@@ -25,6 +26,7 @@ export type CookProfile = {
 const settleOnce = cache(async (userId: string) => {
   const now = serverNow();
   await settleSessions(db, userId, now);
+  await publishDueCriticReviews(db, now); // 발행 시각이 지난 평론가의 평을 가이드북에 싣는다 (누가 접속하든 지연 실행)
   await ensureExamOrder(db, userId, now);
   await healTutorial(db, userId, now); // 안내 주문 손님이 떠났다면 안내를 마무리 단계로
 });

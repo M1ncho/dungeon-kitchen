@@ -6,9 +6,14 @@ import {
   type SalesConfig, type SalesCustomer,
 } from "../../lib/game/sales";
 import type { Database } from "../index";
-import { closeWaitingOrders, spawnOrders, sweepExpiredOrders } from "./order-spawn";
+import { closeWaitingOrders, createOrderSpawner, spawnTutorialOrder, sweepExpiredOrders } from "./order-spawn";
 import {
-  customerFloorWeights, customerTypes, dishZones, dungeonFloors, profiles, salesRecords, salesSessions, salesSettings, sessionDisplays,
+  loadCriticContext, markCriticDeferred, recordCriticVisit, resolveCriticOrders, scheduleFirstVisit,
+  type CriticContext, type CriticVisitInput,
+} from "./critic";
+import { pickDisguise, type CriticSnapshot } from "../../lib/game/critic";
+import {
+  criticVisits, customerFloorWeights, customerTypes, dishZones, dungeonFloors, profiles, salesRecords, salesSessions, salesSettings, sessionDisplays,
   shops, tutorialSettings, userDishes,
 } from "../schema";
 import { advanceStep, getTutorial, onTutorialSale } from "./tutorial";
@@ -17,6 +22,8 @@ type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 type Executor = Pick<Database, "select">;
 
 export const MAX_DISPLAY_QUANTITY = 99;
+/** 미식 평론가가 지나가는 손님으로 변장해 한 접시 살 때의 판매 기록 방문 번호 (일반 손님은 0~2, 안내 손님 99). 클라이언트에는 나가지 않는다. */
+const CRITIC_VISIT_INDEX = 97;
 
 export type SalesFailure =
   | "bad_request" | "already_open" | "no_session" | "no_free_slot" | "dish_unavailable" | "insufficient_dishes"
@@ -74,6 +81,7 @@ async function closeInTx(tx: Tx, sessionId: string, userId: string, endedAt: Dat
     .returning({ id: salesSessions.id });
   if (!closed) return false;
   await closeWaitingOrders(tx, sessionId, endedAt); // 기다리던 주문 손님은 돌아간다
+  await resolveCriticOrders(tx, userId); // 변장한 평론가가 응대 없이 돌아갔다면 평가를 확정한다
   await tx
     .update(userDishes)
     .set({ displayId: null })
@@ -98,6 +106,7 @@ export async function settleInTx(tx: Tx, userId: string, now: Date): Promise<voi
   const session = await openSessionOf(tx, userId);
   if (!session) return;
   await sweepExpiredOrders(tx, session.id, now); // 대기 시간이 지난 주문 손님은 떠난다
+  await resolveCriticOrders(tx, userId); // 변장한 평론가의 주문이 끝났다면 평가를 확정한다
 
   const startedMs = session.startedAt.getTime();
   const tickMs = session.tickSeconds * 1000;
@@ -126,8 +135,57 @@ export async function settleInTx(tx: Tx, userId: string, now: Date): Promise<voi
   }
 }
 
+/** 정산 한 번 동안의 미식 평론가 상태 (방문 일정·별점 효과·이번 정산에서 일어난 방문). */
+type CriticRun = {
+  ctx: CriticContext;
+  nextAtMs: number | null;
+  deferred: boolean;
+  deferredChanged: boolean;
+  /** 평론가가 방문해 평가를 받은 가게의 별점 효과 시계열 (발행 시각 오름차순) */
+  timeline: { atMs: number; stars: number }[];
+  shop: { id: string; name: string } | null;
+  visit: CriticVisitInput | null;
+};
+
+async function loadCriticRun(tx: Tx, session: typeof salesSessions.$inferSelect, floor: FloorRow): Promise<CriticRun | null> {
+  const ctx = await loadCriticContext(tx, floor.floorNo);
+  if (!ctx) return null;
+  const [[p], visits, [shop]] = await Promise.all([
+    tx.select({ nextAt: profiles.criticNextAt, deferred: profiles.criticDeferred }).from(profiles).where(eq(profiles.id, session.userId)),
+    tx
+      .select({ publishAt: criticVisits.publishAt, stars: criticVisits.stars })
+      .from(criticVisits)
+      .where(and(eq(criticVisits.userId, session.userId), inArray(criticVisits.status, ["ready", "published"])))
+      .orderBy(asc(criticVisits.publishAt)),
+    tx.select({ id: shops.id, name: shops.name }).from(shops).where(and(eq(shops.ownerId, session.userId), eq(shops.shopType, "food_stall"))),
+  ]);
+  return {
+    ctx: { ...ctx, strictnessBp: floor.criticStrictnessBp },
+    nextAtMs: p?.nextAt?.getTime() ?? null,
+    deferred: p?.deferred ?? false,
+    deferredChanged: false,
+    // 별점 효과는 발행 시각부터 (정산이 늦어져도 같은 결과)
+    timeline: visits.filter((v) => v.stars !== null).map((v) => ({ atMs: v.publishAt.getTime(), stars: v.stars as number })),
+    shop: shop ?? null,
+    visit: null,
+  };
+}
+
 async function applyTicks(tx: Tx, session: typeof salesSessions.$inferSelect, fromTick: number, toTick: number, now: Date) {
-  await spawnOrders(tx, session, fromTick, toTick, now); // 주문 손님 등장 (같은 정산 트랜잭션, 틱 시드로 결정적)
+  // 첫 플레이 안내 주문: 안내 세션의 틱 0 은 안내 주문이 차지한다 (같은 틱에 일반 주문은 없다)
+  let spawnFrom = fromTick;
+  if (session.isTutorial && fromTick === 0) {
+    await spawnTutorialOrder(tx, session, now);
+    spawnFrom = 1;
+  }
+  // 주문 손님 등장 (같은 정산 트랜잭션, 틱 시드로 결정적). 평론가의 변장 주문도 이 틱 규칙 위에서 자리를 얻는다.
+  const spawner = toTick > spawnFrom ? await createOrderSpawner(tx, session, now) : null;
+  const spawnPlain = async () => {
+    if (!spawner) return;
+    for (let t = spawnFrom; t < toTick; t++) spawner.spawnAt(t);
+    await spawner.flush();
+  };
+
   const settings = await loadSalesSettings(tx);
   const floor = await loadFloor(tx, session.floorId); // 손님·품질 보정은 영업을 시작한 층 기준
   const config = toSalesConfig(settings, floor);
@@ -138,7 +196,10 @@ async function applyTicks(tx: Tx, session: typeof salesSessions.$inferSelect, fr
     .innerJoin(dishZones, eq(dishZones.id, sessionDisplays.zoneId))
     .where(eq(sessionDisplays.sessionId, session.id))
     .orderBy(asc(sessionDisplays.addedAt), asc(sessionDisplays.id));
-  if (lotRows.length === 0) return;
+  if (lotRows.length === 0) {
+    await spawnPlain();
+    return;
+  }
 
   const customerRows = await tx
     .select({ c: customerTypes, weight: customerFloorWeights.weight })
@@ -176,6 +237,12 @@ async function applyTicks(tx: Tx, session: typeof salesSessions.$inferSelect, fr
   }
   // 목록 순서(동점 처리 기준)는 칸 번호 → 묶음 시작 순서로 고정한다
   const groupList = [...groups.values()].sort((x, y) => x.slotIndex - y.slotIndex || x.lots[0].addedAtMs - y.lots[0].addedAtMs || (x.id < y.id ? -1 : 1));
+  // 틱 시작 시각 이전(같음 포함)에 입고된 재고만 이 틱에 팔린다 → 칸 교체·보충 시각과 틱 경계가 겹쳐도 결정적이다
+  const groupsAt = (start: number) =>
+    groupList.map((g) => {
+      const eligible = eligibleAt(g.lots, start);
+      return { g, eligible, remaining: eligible.reduce((a, l) => a + l.row.quantity - l.sold, 0) };
+    });
 
   const records: (typeof salesRecords.$inferInsert)[] = [];
   const soldDishes: { id: string; at: Date }[] = [];
@@ -193,6 +260,10 @@ async function applyTicks(tx: Tx, session: typeof salesSessions.$inferSelect, fr
       tutorialCustomerId = c?.id ?? null;
     }
   }
+
+  // 미식 평론가: 방문 일정·별점 효과. 안내 세션에서는 방문하지 않는다.
+  const crit = await loadCriticRun(tx, session, floor);
+  const starsAt = (ms: number) => crit?.timeline.reduce((s, t) => (t.atMs <= ms ? t.stars : s), 0) ?? 0;
 
   for (let tick = fromTick; tick < toTick; tick++) {
     const start = tickStartMs(startedMs, session.tickSeconds, tick);
@@ -216,11 +287,67 @@ async function applyTicks(tx: Tx, session: typeof salesSessions.$inferSelect, fr
         tutorialSold = true;
       }
     }
-    // 틱 시작 시각 이전(같음 포함)에 입고된 재고만 이 틱에 팔린다 → 칸 교체·보충 시각과 틱 경계가 겹쳐도 결정적이다
-    const tickGroups = groupList.map((g) => {
-      const eligible = eligibleAt(g.lots, start);
-      return { g, eligible, remaining: eligible.reduce((a, l) => a + l.row.quantity - l.sold, 0) };
-    });
+
+    // 미식 평론가 방문: 예정 시각 이후 처음으로 진열 재고가 있는 영업 틱. 진열이 비어 있으면 평가하지 않고 다음 틱(·다음 영업)으로 미룬다.
+    let spawnedThisTick = false;
+    if (crit && !crit.visit && !session.isTutorial && crit.nextAtMs !== null && soldAt.getTime() >= crit.nextAtMs) {
+      const stocked = groupsAt(start).filter((t) => t.remaining > 0);
+      if (stocked.length === 0) {
+        if (!crit.deferred) {
+          crit.deferred = true;
+          crit.deferredChanged = true;
+        }
+      } else {
+        const disguise = pickDisguise(`${session.id}:${tick}:critic`, customers.map((c) => c.weight), crit.ctx.config.orderDisguiseBp);
+        const visitor = customers[disguise.customerIndex];
+        if (visitor) {
+          const snapshot: CriticSnapshot = {
+            dishes: stocked.map((t) => ({
+              name: t.g.lots[0].row.name, zone: t.g.zoneCode, quality: t.g.lots[0].row.quality as 1 | 2 | 3,
+              price: t.g.lots[0].row.price, basePrice: t.g.lots[0].row.basePrice,
+            })),
+          };
+          const base = {
+            userId: session.userId, shopId: crit.shop?.id ?? null, shopName: crit.shop?.name ?? "", scheduledAt: new Date(crit.nextAtMs),
+            visitedAt: soldAt, sessionId: session.id, tick, customerTypeId: visitor.id, deferred: crit.deferred, floorNo: floor.floorNo, snapshot,
+          };
+          if (disguise.asOrder && spawner?.canOrder(visitor.id) && tick >= spawnFrom) {
+            // 주문 손님으로 변장: 일반 주문 손님과 같은 흐름. 대기 중인 손님이 있으면 오지 못하고 다음 틱으로 미뤄진다.
+            const orderId = crypto.randomUUID();
+            const r = spawner.spawnAt(tick, { id: orderId, customerId: visitor.id, seed: `${session.id}:${tick}:critic` });
+            spawnedThisTick = true;
+            if (r === "critic") crit.visit = { ...base, disguise: "order", orderId, salesRecordId: null };
+          } else {
+            // 지나가는 손님으로 변장: 진열된 가장 좋은 요리를 한 접시 산다 (판매 기록에도 일반 손님처럼 남는다)
+            const best = stocked.reduce((a, b) => (b.g.lots[0].row.quality > a.g.lots[0].row.quality ? b : a));
+            const lot = best.eligible.find((l) => l.row.quantity - l.sold > 0);
+            const dishId = lot ? (dishQueue.get(lot.row.id)?.shift() ?? null) : null;
+            if (lot && dishId) {
+              const recordId = crypto.randomUUID();
+              const q = lot.row.quality;
+              const rep = q === 3 ? config.repPerfect : q === 2 ? config.repGood : 0;
+              lot.sold += 1;
+              gold += lot.row.price;
+              reputation += rep;
+              soldDishes.push({ id: dishId, at: soldAt });
+              records.push({
+                id: recordId, sessionId: session.id, userId: session.userId, tick, visitIndex: CRITIC_VISIT_INDEX, source: "passerby",
+                customerTypeId: visitor.id, displayId: lot.row.id, slotIndex: best.g.slotIndex, dishId, zoneId: lot.row.zoneId,
+                dishName: lot.row.name, quality: q, price: lot.row.price, basePrice: lot.row.basePrice, reputationGained: rep, preferred: false, soldAt,
+              });
+              crit.visit = { ...base, disguise: "passerby", orderId: null, salesRecordId: recordId };
+            }
+          }
+        }
+      }
+    }
+    if (!spawnedThisTick && spawner && tick >= spawnFrom) spawner.spawnAt(tick);
+
+    const tickGroups = groupsAt(start);
+    // 별점 효과: 이 틱 시작 시점에 가이드북에 실려 있는 별점 (정산 시점과 무관하게 결정적)
+    const stars = starsAt(start);
+    const tickConfig: SalesConfig =
+      crit && stars > 0 ? { ...config, criticStars: stars, starCustomerBp: crit.ctx.settings.starCustomerBp, starReliefBp: crit.ctx.settings.starReliefBp } : config;
     const result = simulateSalesTick(
       `${session.id}:${tick}`,
       tickGroups
@@ -230,7 +357,7 @@ async function applyTicks(tx: Tx, session: typeof salesSessions.$inferSelect, fr
           price: t.g.lots[0].row.price, basePrice: t.g.lots[0].row.basePrice, remaining: t.remaining,
         })),
       customers,
-      config,
+      tickConfig,
     );
     for (const sale of result.sales) {
       const t = tickGroups.find((x) => x.g.id === sale.displayId)!;
@@ -249,33 +376,36 @@ async function applyTicks(tx: Tx, session: typeof salesSessions.$inferSelect, fr
       });
     }
   }
-  if (records.length === 0) return;
-
-  await tx.insert(salesRecords).values(records).onConflictDoNothing();
-  for (const g of groupList) {
-    for (const l of g.lots) {
-      if (l.sold === l.row.sold) continue;
-      const [ok] = await tx
-        .update(sessionDisplays)
-        .set({ sold: l.sold })
-        .where(and(eq(sessionDisplays.id, l.row.id), eq(sessionDisplays.sold, l.row.sold)))
-        .returning({ id: sessionDisplays.id });
-      if (!ok) throw new Error("진열 판매 수 충돌");
+  await spawner?.flush(); // 주문 손님(평론가의 변장 주문 포함)을 먼저 저장해야 방문 기록이 가리킬 수 있다
+  if (records.length > 0) {
+    await tx.insert(salesRecords).values(records).onConflictDoNothing();
+    for (const g of groupList) {
+      for (const l of g.lots) {
+        if (l.sold === l.row.sold) continue;
+        const [ok] = await tx
+          .update(sessionDisplays)
+          .set({ sold: l.sold })
+          .where(and(eq(sessionDisplays.id, l.row.id), eq(sessionDisplays.sold, l.row.sold)))
+          .returning({ id: sessionDisplays.id });
+        if (!ok) throw new Error("진열 판매 수 충돌");
+      }
     }
+    for (const d of soldDishes) {
+      // 주문 손님에게 내준 요리와 겹치면 충돌 → 롤백 (다음 접근에서 다시 정산된다)
+      const [ok] = await tx
+        .update(userDishes)
+        .set({ soldAt: d.at })
+        .where(and(eq(userDishes.id, d.id), isNull(userDishes.soldAt)))
+        .returning({ id: userDishes.id });
+      if (!ok) throw new Error("판매할 요리가 이미 사라졌습니다");
+    }
+    await tx
+      .update(profiles)
+      .set({ gold: sql`${profiles.gold} + ${gold}`, reputation: sql`${profiles.reputation} + ${reputation}` })
+      .where(eq(profiles.id, session.userId));
   }
-  for (const d of soldDishes) {
-    // 주문 손님에게 내준 요리와 겹치면 충돌 → 롤백 (다음 접근에서 다시 정산된다)
-    const [ok] = await tx
-      .update(userDishes)
-      .set({ soldAt: d.at })
-      .where(and(eq(userDishes.id, d.id), isNull(userDishes.soldAt)))
-      .returning({ id: userDishes.id });
-    if (!ok) throw new Error("판매할 요리가 이미 사라졌습니다");
-  }
-  await tx
-    .update(profiles)
-    .set({ gold: sql`${profiles.gold} + ${gold}`, reputation: sql`${profiles.reputation} + ${reputation}` })
-    .where(eq(profiles.id, session.userId));
+  if (crit?.visit) await recordCriticVisit(tx, crit.ctx, crit.visit);
+  else if (crit?.deferredChanged) await markCriticDeferred(tx, session.userId);
   if (tutorialSold) await onTutorialSale(tx, session.userId); // 첫 플레이 안내: 서버 이벤트
 }
 
@@ -475,6 +605,7 @@ export async function startSession(db: Database, input: { userId: string; displa
       await placeDisplay(tx, { userId: input.userId, sessionId: session.id, input: d, now: input.now, settings, floorPriceMultiplier: floor.priceMultiplier });
     }
     await markTutorialSession(tx, input.userId, session.id);
+    await scheduleFirstVisit(tx, input.userId, input.now); // 첫 영업이면 첫 평론가 방문을 예약한다
     return {};
   });
 }

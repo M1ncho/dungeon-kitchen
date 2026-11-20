@@ -9,6 +9,7 @@ import { InventoryBar } from "@/components/home/inventory-bar";
 import { getBoardSummary } from "@/db/queries/board";
 import { getCollectedDishCount } from "@/db/queries/kitchen";
 import { getExamAlert } from "@/db/queries/floors";
+import { getUnseenReviewCount } from "@/db/queries/guide";
 import { getSalesStatus } from "@/db/queries/stall";
 import { getInventory, getPeddlerSnapshot } from "@/db/queries/market";
 import { serverNow } from "@/lib/clock";
@@ -16,13 +17,14 @@ import { requireCook } from "@/lib/session";
 
 async function HomeContent() {
   const cook = await requireCook();
-  const [snapshot, inventory, dishCount, sales, examAlert, board] = await Promise.all([
+  const [snapshot, inventory, dishCount, sales, examAlert, board, newReviews] = await Promise.all([
     getPeddlerSnapshot(cook.id),
     getInventory(cook.id),
     getCollectedDishCount(cook.id),
     getSalesStatus(cook.id),
     getExamAlert(cook.id),
     getBoardSummary(cook.id, serverNow()),
+    getUnseenReviewCount(cook.id),
   ]);
 
   const shopName = cook.shop?.name ?? "무명 포장마차";
@@ -82,6 +84,16 @@ async function HomeContent() {
         chips: [{ label: "이용 가능", tone: "moss" }, { label: `요리 ${dishCount}개`, tone: "lantern" }],
       };
     }
+    if (f.code === "GDE") {
+      // 미식 가이드: 가면 미식가의 평이 발행되면 알린다 (발행 전에는 아무것도 알리지 않는다)
+      const label = newReviews > 0 ? "새 평이 실렸어요" : "가이드북 읽기";
+      return {
+        ...f,
+        status: label,
+        badge: newReviews > 0 ? "새 평" : undefined,
+        chips: [{ label: "이용 가능", tone: "moss" }, { label, tone: newReviews > 0 ? "lantern" : "gray" }],
+      };
+    }
     return { ...f, status: "준비 중", chips: [{ label: "준비 중", tone: "gray" }] };
   });
 
@@ -115,7 +127,18 @@ async function HomeContent() {
         left={left}
         tiles={tiles}
         alert={
-          examAlert && (
+          (examAlert || newReviews > 0) && (
+            <>
+          {newReviews > 0 && (
+            <div
+              className="mb-4 flex flex-col gap-2 rounded-2xl border-[3px] border-dk-outline bg-dk-lantern p-3 text-dk-outline shadow-[0_4px_0_var(--dk-shadow)] sm:flex-row sm:items-center sm:justify-between"
+              data-testid="review-alert"
+            >
+              <p className="font-display text-lg leading-snug">🎭 가면 미식가의 평이 가이드북에 실렸어요!</p>
+              <ChunkyButton size="sm" variant="paper" href="/guide" data-testid="review-alert-go">가이드북 보기</ChunkyButton>
+            </div>
+          )}
+          {examAlert && (
             <div
               className="mb-4 flex flex-col gap-2 rounded-2xl border-[3px] border-dk-outline bg-dk-red p-3 text-dk-paper shadow-[0_4px_0_var(--dk-shadow)] sm:flex-row sm:items-center sm:justify-between"
               data-testid="exam-alert" data-floor={examAlert.floor}
@@ -125,6 +148,8 @@ async function HomeContent() {
               </p>
               <ChunkyButton size="sm" href="/floors" data-testid="exam-alert-go">층 지도에서 응대</ChunkyButton>
             </div>
+          )}
+            </>
           )
         } nextPeddler={{ endsAtMs: snapshot.endsAtMs, serverNowMs: snapshot.nowMs }} />
       <InventoryBar items={inventory} dishCount={dishCount} />

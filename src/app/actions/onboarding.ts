@@ -10,6 +10,7 @@ export type RegisterState = { error?: string };
 const ERRORS = {
   invalid_nickname: "닉네임은 2~12자여야 합니다.",
   invalid_shop_name: "가게 이름은 2~20자여야 합니다.",
+  forbidden_word: "가이드북에 공개되는 이름이라 쓸 수 없는 말이 들어 있어요. 다른 이름을 골라 주세요.",
   nickname_taken: "이미 사용 중인 닉네임입니다.",
   no_floor: "던전 데이터가 준비되지 않았습니다. 관리자에게 문의하세요.",
 } as const;
