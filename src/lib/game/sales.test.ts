@@ -135,3 +135,45 @@ describe("가격·틱 보조 함수", () => {
     expect(ids(3)).toEqual(["a", "b"]); // 다음 틱부터 포함
   });
 });
+
+describe("미식 평론가 별점 효과", () => {
+  const star = (n: number): SalesConfig => ({ ...cfg, criticStars: n, starCustomerBp: 1500, starReliefBp: 1000 });
+  const mixed = [customer("human_warrior"), customer("elf_mage", 2)];
+  const stock = [dish({ price: 24, quality: 2 }), dish({ id: "d2", zoneCode: "skewer", quality: 3, price: 30 })];
+
+  it("별 0 이거나 효과 값이 없으면 기존과 결과가 똑같다 (난수도 더 쓰지 않는다)", () => {
+    for (let t = 0; t < 300; t++) {
+      const base = simulateSalesTick(`s:${t}`, stock, mixed, cfg);
+      expect(simulateSalesTick(`s:${t}`, stock, mixed, { ...cfg, criticStars: 0, starCustomerBp: 1500, starReliefBp: 1000 })).toEqual(base);
+      expect(simulateSalesTick(`s:${t}`, stock, mixed, { ...cfg, criticStars: 3 })).toEqual(base); // 효과 크기가 0
+    }
+  });
+
+  it("별이 많을수록 손님이 늘고 판매가 늘며, 손님 수 상한(3명)은 넘지 않는다", () => {
+    const sold = (n: number) => soldOver(stock, mixed, 4000, star(n));
+    const [s0, s1, s2, s3] = [0, 1, 2, 3].map(sold);
+    expect(s1).toBeGreaterThan(s0);
+    expect(s2).toBeGreaterThan(s1);
+    expect(s3).toBeGreaterThan(s2);
+    expect(s3 / s0).toBeGreaterThan(1.15); // ★3 은 눈에 띄게 (실측 +20~30%)
+    expect(s3 / s0).toBeLessThan(1.45); // 하지만 판을 뒤집을 정도는 아니다
+    for (let t = 0; t < 500; t++) expect(simulateSalesTick(`cap:${t}`, stock, mixed, star(3)).customerCount).toBeLessThanOrEqual(cfg.customersMax);
+  });
+
+  it("같은 시드·입력이면 별점이 있어도 결과가 같다", () => {
+    const a = simulateSalesTick("same:1", stock, mixed, star(2));
+    for (let i = 0; i < 5; i++) expect(simulateSalesTick("same:1", stock, mixed, star(2))).toEqual(a);
+  });
+
+  it("가격 부담은 별 1개당 줄어든다 (기준가보다 싸게 팔 때는 그대로)", () => {
+    const expensive = dish({ price: 48, basePrice: 24, quality: 1 });
+    const cheap = dish({ price: 12, basePrice: 24, quality: 1 });
+    const w = customer("human_warrior");
+    const s = (n: number, d: TickDisplay) => dishScore(w, d, star(n));
+    expect(s(1, expensive)).toBeGreaterThan(s(0, expensive));
+    expect(s(3, expensive)).toBeGreaterThan(s(1, expensive));
+    expect(s(3, cheap)).toBe(s(0, cheap));
+    expect(dishScore(w, expensive, { ...cfg, criticStars: 10, starReliefBp: 1000 })).toBeCloseTo(dishScore(w, { ...expensive, price: 24 }, cfg), 5); // 부담은 0 아래로 내려가지 않는다
+  });
+});
+

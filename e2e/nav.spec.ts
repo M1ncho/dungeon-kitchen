@@ -47,9 +47,11 @@ test("데스크톱: 왼쪽 탭으로 시장 → 주방 → 포장마차로 이�
   await expect(page.getByTestId("facility-nav-side")).toHaveCount(0);
   await page.getByTestId("facility-tile-KIT").click();
   await expect(page.getByTestId("facility-nav-side")).toBeVisible();
-  // 준비 중인 시설은 토스트
+  // 가이드 탭: 가이드북으로 이동하고 현재 탭이 된다
   await page.getByTestId("facility-nav-side").getByTestId("tab-GDE").click();
-  await expect(page.getByText("준비 중이에요")).toBeVisible();
+  await expect(page).toHaveURL(/\/guide$/);
+  await expect(page.getByTestId("guide-page")).toBeVisible();
+  await expect(page.getByTestId("tab-GDE")).toHaveAttribute("aria-current", "page");
 });
 
 test("모바일: 하단 탭 바로 이동하고 본문이 탭 바에 가려지지 않으며, 행상 도착 뱃지는 시장을 보면 사라진다", async ({ page }) => {

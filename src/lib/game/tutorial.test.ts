@@ -192,8 +192,8 @@ describe("시드 대사·팁·도움말", () => {
     }
   });
 
-  it("상황별 팁 6종과 도움말 주제 7종, 팁도 두 문장 이내", () => {
-    expect(TUTORIAL_TIPS.map((t) => t.code)).toEqual(["rare_ingredient", "toxin_4", "locked_zone", "exam_waiting", "sold_out", "first_request"]);
+  it("상황별 팁 7종과 도움말 주제 7종, 팁도 두 문장 이내", () => {
+    expect(TUTORIAL_TIPS.map((t) => t.code)).toEqual(["rare_ingredient", "toxin_4", "locked_zone", "exam_waiting", "sold_out", "first_request", "first_review"]);
     for (const t of TUTORIAL_TIPS) expect(sentences(t.text), t.text).toBeLessThanOrEqual(2);
     expect(HELP_TOPICS.map((t) => t.code)).toEqual(["market", "taste_map", "methods", "toxin", "stall", "orders", "floors"]);
     for (const h of HELP_TOPICS) expect(h.body.length).toBeGreaterThan(20);

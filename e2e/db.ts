@@ -47,6 +47,14 @@ export async function skipTutorialOf(nickname: string) {
     .update(schema.tutorialProgress)
     .set({ status: "skipped", step: "done", finishedAt: new Date(), seenTips: tips.map((t) => t.code) })
     .where(eq(schema.tutorialProgress.userId, p.id));
+  // 가이드북 공개 알림도 본 것으로 한다 (다른 e2e 화면 위에 알림 카드가 끼지 않게. 알림 자체는 critic.spec.ts 가 시험한다)
+  await db.update(schema.profiles).set({ guideNoticeSeenAt: new Date() }).where(eq(schema.profiles.id, p.id));
+}
+
+/** 가이드북 공개 알림을 "아직 안 본" 상태로 되돌린다. */
+export async function unseeGuideNotice(nickname: string) {
+  const { db, schema } = await load();
+  await db.update(schema.profiles).set({ guideNoticeSeenAt: null }).where(eq(schema.profiles.nickname, nickname));
 }
 
 /** 상황별 팁 하나를 "아직 안 본" 상태로 되돌린다 (createAccount 는 팁을 모두 본 것으로 만든다). */
@@ -132,4 +140,52 @@ export async function readOrderSecret(orderId: string) {
  */
 export async function closeDb() {
   /* 의도적으로 아무것도 하지 않는다 */
+}
+
+
+// ───── 미식 평론가 (e2e/critic.spec.ts) ─────
+
+/** 창고에 수프 요리를 직접 넣는다 (조리 화면을 거치지 않고 영업을 준비하기 위한 테스트 전용 장치). 재료비 6G → 기준가 14G. */
+export async function giveSoups(nickname: string, count: number, quality = 3) {
+  const { db, schema } = await load();
+  const [p] = await db.select({ id: schema.profiles.id }).from(schema.profiles).where(eq(schema.profiles.nickname, nickname));
+  const [zone] = await db.select({ id: schema.dishZones.id }).from(schema.dishZones).where(eq(schema.dishZones.code, "soup"));
+  const [ing] = await db.select({ id: schema.ingredients.id }).from(schema.ingredients).limit(1);
+  const now = new Date();
+  await db.insert(schema.userDishes).values(
+    Array.from({ length: count }, () => ({
+      userId: p.id, zoneId: zone.id, mainIngredientId: ing.id, name: "진한 버섯 수프", quality, finalX: 0, finalY: 30, toxin: 0, steps: [],
+      ingredientCost: 6, readyAt: now, collectedAt: now,
+    })),
+  );
+}
+
+/** 평론가 설정에서 주문 손님으로 변장할 확률(1/10000)만 바꾸고 이전 값을 돌려준다. */
+export async function setCriticDisguiseBp(bp: number): Promise<number> {
+  const { db, schema } = await load();
+  const [s] = await db.select({ bp: schema.criticSettings.orderDisguiseBp }).from(schema.criticSettings);
+  await db.update(schema.criticSettings).set({ orderDisguiseBp: bp });
+  return s.bp;
+}
+
+/** 이 유저의 영업 세션 시작 시각들과 다음 평론가 방문 예정 시각. */
+export async function readCriticSchedule(nickname: string) {
+  const { db, schema } = await load();
+  const [p] = await db.select({ id: schema.profiles.id, nextAt: schema.profiles.criticNextAt }).from(schema.profiles).where(eq(schema.profiles.nickname, nickname));
+  const sessions = await db.select({ startedAt: schema.salesSessions.startedAt }).from(schema.salesSessions).where(eq(schema.salesSessions.userId, p.id));
+  return { nextAt: p.nextAt, startedAt: sessions.map((s) => s.startedAt).sort((a, b) => a.getTime() - b.getTime())[0] ?? null };
+}
+
+/** 다음 평론가 방문 예정 시각을 직접 정한다 (시간 이동으로 며칠을 기다리지 않기 위한 테스트 전용 장치). */
+export async function setCriticNextAt(nickname: string, at: Date) {
+  const { db, schema } = await load();
+  await db.update(schema.profiles).set({ criticNextAt: at }).where(eq(schema.profiles.nickname, nickname));
+}
+
+/** 이 유저의 평론가 방문 기록 (방문 순서). */
+export async function readCriticVisits(nickname: string) {
+  const { db, schema } = await load();
+  const [p] = await db.select({ id: schema.profiles.id }).from(schema.profiles).where(eq(schema.profiles.nickname, nickname));
+  const rows = await db.select().from(schema.criticVisits).where(eq(schema.criticVisits.userId, p.id));
+  return rows.sort((a, b) => a.visitedAt.getTime() - b.visitedAt.getTime());
 }

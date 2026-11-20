@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createAccount, goHome } from "./helpers";
 
-test("홈: 타일을 누르면 바로 이동하고, 안내판은 마우스를 올렸을 때 미리보기로만 보이며, 준비 중 시설은 토스트", async ({ page }) => {
+test("홈: 타일을 누르면 바로 이동하고, 안내판은 마우스를 올렸을 때 미리보기로만 보인다", async ({ page }) => {
   await createAccount(page);
   await page.setViewportSize({ width: 1280, height: 800 });
 
@@ -16,17 +16,12 @@ test("홈: 타일을 누르면 바로 이동하고, 안내판은 마우스를 �
   await expect(board).toContainText("의뢰 게시판");
 
   // 누르면 바로 이동한다
-  for (const [code, url] of [["MKT", /\/market$/], ["KIT", /\/kitchen$/], ["STL", /\/stall$/], ["REQ", /\/board$/], ["INV", /\/inventory$/]] as const) {
+  for (const [code, url] of [["MKT", /\/market$/], ["KIT", /\/kitchen$/], ["STL", /\/stall$/], ["REQ", /\/board$/], ["INV", /\/inventory$/], ["GDE", /\/guide$/]] as const) {
     await page.getByTestId(`facility-tile-${code}`).click();
     await expect(page).toHaveURL(url);
     await goHome(page);
     await expect(page).toHaveURL(/\/$/);
   }
-
-  // 준비 중인 시설은 이동하지 않고 짧은 토스트가 뜬다
-  await page.getByTestId("facility-tile-GDE").click();
-  await expect(page.getByText("준비 중이에요")).toBeVisible();
-  await expect(page).toHaveURL(/\/$/);
 
   // 모바일: 하단 안내판은 숨겨진다
   await page.setViewportSize({ width: 390, height: 844 });
