@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, check, integer, pgTable, primaryKey, smallint, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { bigint, check, integer, pgTable, primaryKey, smallint, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { dungeonFloors, ingredients } from "./world";
 import { profiles } from "./players";
 
@@ -90,4 +90,16 @@ export const peddlerOffers = pgTable(
     check("peddler_offers_quantity_check", sql`${t.quantity} > 0`),
     check("peddler_offers_sold_check", sql`${t.sold} >= 0 and ${t.sold} <= ${t.quantity}`),
   ],
+);
+
+// 행상 한마디 (시드로 관리). kind = greeting(층별 인사) | rare(희귀·전설 품목 언급, {item}·{n} 치환)
+export const peddlerLines = pgTable(
+  "peddler_lines",
+  {
+    code: text("code").primaryKey(),
+    floorNo: smallint("floor_no").notNull(),
+    kind: text("kind").notNull(),
+    text: text("text").notNull(),
+  },
+  (t) => [check("peddler_lines_kind_check", sql`${t.kind} in ('greeting', 'rare')`)],
 );

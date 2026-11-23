@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { serverNow } from "@/lib/clock";
 import { getOrCreatePeddlerSnapshot } from "../commands/peddler-snapshot";
 import { db } from "../index";
-import { ingredients, profiles, userIngredients } from "../schema";
+import { ingredients, peddlerLines, profiles, userIngredients } from "../schema";
 
 // 모든 함수는 세션의 userId 로 범위를 제한한다. 시간은 항상 서버 시각(serverNow()).
 
@@ -41,4 +41,9 @@ export async function getInventory(userId: string) {
 export async function getGold(userId: string) {
   const [row] = await db.select({ gold: profiles.gold }).from(profiles).where(eq(profiles.id, userId));
   return row?.gold ?? 0;
+}
+
+/** 행상 한마디 (마스터 데이터, 유저 조건 없음) */
+export async function getPeddlerLines() {
+  return db.select({ floorNo: peddlerLines.floorNo, kind: peddlerLines.kind, text: peddlerLines.text }).from(peddlerLines);
 }

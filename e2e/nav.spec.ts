@@ -95,7 +95,7 @@ test("지름길: 구매 후 '요리하러 가기', 품절 때 '주방으로'", a
   await page.getByTestId("facility-tile-MKT").click(); // 홈에는 데스크톱 레일이 없다
   const row = page.getByTestId("staple-row").filter({ has: page.getByText("소금", { exact: true }) });
   await row.getByTestId("buy-button").click();
-  await expect(row.getByText("구매 완료")).toBeVisible();
-  await row.getByTestId("buy-to-kitchen").click();
+  await expect(page.getByTestId("market-notice")).toBeVisible();
+  await page.getByTestId("buy-to-kitchen").click();
   await expect(page).toHaveURL(/\/kitchen$/);
 });

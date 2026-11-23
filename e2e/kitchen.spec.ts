@@ -5,7 +5,7 @@ async function buyStaple(page: Page, name: string, qty: number) {
   const row = page.getByTestId("staple-row").filter({ has: page.getByText(name, { exact: true }) });
   await row.getByTestId("buy-qty").fill(String(qty));
   await row.getByTestId("buy-button").click();
-  await expect(row.getByText("구매 완료")).toBeVisible();
+  await expect(page.getByTestId("market-notice")).toContainText(`${name} ${qty}개를 샀어요`);
 }
 
 const ingredientButton = (page: Page, name: string) =>
@@ -18,6 +18,7 @@ test("주방: 시장에서 재료 구매 → 맛 지도로 수프 완성 → 창
   await page.goto("/market");
   await buyStaple(page, "던전 버섯", 2);
   await buyStaple(page, "소금", 2);
+  await expect.poll(() => readGold(page)).toBe(188); // 버섯 4G×2 + 소금 2G×2 (HUD 가 갱신될 때까지 기다린다)
   const goldAfterShopping = await readGold(page);
 
   // 홈의 주방 타일로 진입

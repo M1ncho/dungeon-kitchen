@@ -64,11 +64,13 @@ for (const mode of ["passerby", "order"] as const) {
       const secrets = [
         nextAt.toISOString().slice(0, 16), String(nextAt.getTime()), sched.nextAt!.toISOString().slice(0, 16),
         visit.id, "critic_visits", "order_waiting", "criticNextAt", "critic_next_at", "disguise",
-        ...(visit.reviewText ? visit.reviewText.split("\n") : []),
       ];
+      // 평 문장은 같은 템플릿을 쓴 다른 계정의 발행된 평과 겹칠 수 있어 /guide 에서는 문장 대신 아래 "내 가게 미평가"로 확인한다
+      const reviewLines = visit.reviewText ? visit.reviewText.split("\n") : [];
       for (const path of ["/", "/stall", "/guide", "/inventory", "/settings", "/market"]) {
         const html = await htmlOf(page, path);
-        for (const secret of secrets) expect(html.includes(secret), `${path} 에 "${secret.slice(0, 30)}" 가 있습니다`).toBe(false);
+        for (const secret of path === "/guide" ? secrets : [...secrets, ...reviewLines])
+          expect(html.includes(secret), `${path} 에 "${secret.slice(0, 30)}" 가 있습니다`).toBe(false);
       }
       // 가이드북 내 가게: 아직 받은 평이 없고 "미평가", 알림 뱃지·홈 알림도 없다
       await page.goto("/guide");
@@ -117,7 +119,7 @@ for (const mode of ["passerby", "order"] as const) {
       await page.getByTestId("guide-tab-issue").click();
       await expect(page.getByTestId("guide-review").filter({ hasText: shopName })).toHaveAttribute("data-stars", String(stars));
       await page.getByTestId("guide-tab-shops").click();
-      const row = page.getByTestId("guide-shop-row").filter({ hasText: shopName });
+      const row = page.getByTestId("guide-shop-row").filter({ hasText: nickname });
       await expect(row).toHaveAttribute("data-mine", "true");
       await expect(row.locator("[data-stars]")).toHaveAttribute("data-stars", String(stars));
 

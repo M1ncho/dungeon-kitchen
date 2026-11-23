@@ -6,7 +6,7 @@ import { serverNow } from "@/lib/clock";
 import { db } from "@/db";
 import { MAX_PURCHASE_QUANTITY, buyFromOffer, buyStaple, type PurchaseFailure } from "@/db/commands/purchase";
 
-export type BuyState = { error?: string; message?: string };
+export type BuyState = { error?: string; message?: string; totalCost?: number };
 
 const MESSAGES: Record<PurchaseFailure | "bad_request", string> = {
   invalid_quantity: `수량은 1~${MAX_PURCHASE_QUANTITY} 사이의 정수여야 합니다.`,
@@ -40,5 +40,5 @@ export async function buyIngredient(_: BuyState, formData: FormData): Promise<Bu
 
   refresh(); // 골드(헤더)·재고·인벤토리를 다시 그린다
   if (!result.ok) return { error: MESSAGES[result.reason] };
-  return { message: `구매 완료 (-${result.totalCost.toLocaleString()} G)` };
+  return { message: `구매 완료 (-${result.totalCost.toLocaleString()} G)`, totalCost: result.totalCost };
 }

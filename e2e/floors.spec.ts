@@ -11,7 +11,7 @@ async function buyStaple(page: Page, name: string, qty: number) {
   const row = page.getByTestId("staple-row").filter({ has: page.getByText(name, { exact: true }) });
   await row.getByTestId("buy-qty").fill(String(qty));
   await row.getByTestId("buy-button").click();
-  await expect(row.getByText("구매 완료")).toBeVisible();
+  await expect(page.getByTestId("market-notice")).toContainText(`${name} ${qty}개를 샀어요`);
 }
 
 /** 재료 시장의 행상 출신 층 집합 (카드 제목 "N층 … 행상"). */

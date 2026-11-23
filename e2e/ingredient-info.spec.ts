@@ -7,7 +7,7 @@ async function buySalt(page: import("@playwright/test").Page) {
   await page.goto("/market");
   const row = page.getByTestId("staple-row").filter({ has: page.getByText("소금", { exact: true }) });
   await row.getByTestId("buy-button").click();
-  await expect(row.getByText("구매 완료")).toBeVisible();
+  await expect(page.getByTestId("market-notice")).toBeVisible();
 }
 
 test("데스크톱: 마우스를 올리면 재료 정보 카드(속성 5종·독성·이동 화살표)가 뜬다", async ({ page }) => {

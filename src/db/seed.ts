@@ -4,7 +4,7 @@ import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import {
   cookingMethods, cookingSettings, customerTypes, dishModifiers, dishZones, dungeonFloors, floorIngredients, ingredients,
   customerFloorWeights, helpTopics, marketSettings, orderSettings, orderTexts, peddlerRules, salesSettings, tutorialLines, tutorialSettings,
-  tutorialTips, requestSettings, requestTexts, criticSettings, criticTexts,
+  tutorialTips, peddlerLines, requestSettings, requestTexts, criticSettings, criticTexts,
 } from "./schema";
 import * as schema from "./schema";
 import { COOKING_SETTINGS, METHODS, MODIFIERS, ZONES } from "./seed-data/cooking";
@@ -12,6 +12,7 @@ import { CUSTOMER_ORDER_PROFILES, ORDER_SETTINGS, ORDER_TEXTS } from "./seed-dat
 import { CUSTOMER_FLOOR_WEIGHTS, CUSTOMER_TASTES, SALES_SETTINGS } from "./seed-data/sales";
 import { EXAM_SETTINGS, FLOORS, FLOOR_DROPS, NEW_CUSTOMERS, PEDDLER_ORIGIN_WEIGHTS, PEDDLER_RULES, SUPERVISORS } from "./seed-data/floors";
 import { REQUEST_SETTINGS, REQUEST_TEXTS } from "./seed-data/requests";
+import { PEDDLER_LINES } from "./seed-data/peddler-lines";
 import { CRITIC_SETTINGS, CRITIC_TEXTS, FLOOR_CRITIC_STRICTNESS } from "./seed-data/critic";
 import { HELP_TOPICS, TUTORIAL_CUSTOMER, TUTORIAL_LINES, TUTORIAL_SETTINGS, TUTORIAL_TIPS } from "./seed-data/tutorial";
 import { BASE_PRICES, INGREDIENTS, INGREDIENT_FLOORS, SHORT_NAMES, STAPLES } from "./seed-data/ingredients";
@@ -288,6 +289,12 @@ export async function seedWorld(db: PgDatabase<PgQueryResultHKT, typeof schema>)
       .insert(requestTexts)
       .values(REQUEST_TEXTS.map((t) => ({ ...t })))
       .onConflictDoUpdate({ target: requestTexts.code, set: { outcome: excluded("outcome"), speaker: excluded("speaker"), text: excluded("text") } });
+    // 행상 한마디 (code 기준 upsert, 빠진 code 는 지운다)
+    await tx
+      .insert(peddlerLines)
+      .values(PEDDLER_LINES.map((l) => ({ ...l })))
+      .onConflictDoUpdate({ target: peddlerLines.code, set: { floorNo: excluded("floor_no"), kind: excluded("kind"), text: excluded("text") } });
+    await tx.delete(peddlerLines).where(notInArray(peddlerLines.code, PEDDLER_LINES.map((l) => l.code)));
     // 미식 평론가: 설정과 평 문장 템플릿 (code 기준 upsert)
     await tx
       .insert(criticSettings)

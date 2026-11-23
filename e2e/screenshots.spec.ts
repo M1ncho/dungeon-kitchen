@@ -22,13 +22,13 @@ test("홈 화면 캡처 (데스크톱 1440 / 모바일 390)", async ({ page }) =
     const row = page.getByTestId("staple-row").filter({ has: page.getByText(name, { exact: true }) });
     await row.getByTestId("buy-qty").fill(qty);
     await row.getByTestId("buy-button").click();
-    await expect(row.getByText("구매 완료")).toBeVisible();
+    await expect(page.getByTestId("market-notice")).toContainText(`${name} ${qty}개를 샀어요`);
   }
   const offers = await page.getByTestId("offer-row").all();
   for (const offer of offers.slice(0, 4)) {
     await offer.getByTestId("buy-qty").fill("1");
     await offer.getByTestId("buy-button").click();
-    await expect(offer.getByText("구매 완료")).toBeVisible();
+    await expect(page.getByTestId("market-notice")).toBeVisible();
   }
 
   await goHome(page);
@@ -63,13 +63,13 @@ test("주방 화면 캡처 (데스크톱 1440 / 모바일 390)", async ({ page }
     const row = page.getByTestId("staple-row").filter({ has: page.getByText(name, { exact: true }) });
     await row.getByTestId("buy-qty").fill(qty);
     await row.getByTestId("buy-button").click();
-    await expect(row.getByText("구매 완료")).toBeVisible();
+    await expect(page.getByTestId("market-notice")).toContainText(`${name} ${qty}개를 샀어요`);
   }
   const offers = await page.getByTestId("offer-row").all();
   for (const offer of offers.slice(0, 4)) {
     await offer.getByTestId("buy-qty").fill("2");
     await offer.getByTestId("buy-button").click();
-    await expect(offer.getByText(/구매 완료|골드가 부족|남은 수량/)).toBeVisible();
+    await expect(page.getByTestId("market-notice")).toBeVisible();
   }
 
   await page.goto("/kitchen");
@@ -121,7 +121,7 @@ test("포장마차 화면 캡처 (데스크톱 1440 / 모바일 390)", async ({ 
     const row = page.getByTestId("staple-row").filter({ has: page.getByText(name, { exact: true }) });
     await row.getByTestId("buy-qty").fill(qty);
     await row.getByTestId("buy-button").click();
-    await expect(row.getByText("구매 완료")).toBeVisible();
+    await expect(page.getByTestId("market-notice")).toContainText(`${name} ${qty}개를 샀어요`);
   }
   await page.goto("/kitchen");
   const pick = (name: string) => page.getByTestId("kitchen-ingredient").filter({ has: page.getByText(name, { exact: true }) });
@@ -213,7 +213,7 @@ test("포장마차 주문 손님 화면 캡처 (데스크톱 1440 / 모바일 39
       const row = page.getByTestId("staple-row").filter({ has: page.getByText(name, { exact: true }) });
       await row.getByTestId("buy-qty").fill(qty);
       await row.getByTestId("buy-button").click();
-      await expect(row.getByText("구매 완료")).toBeVisible();
+      await expect(page.getByTestId("market-notice")).toContainText(`${name} ${qty}개를 샀어요`);
     }
     await page.goto("/kitchen");
     const pick = (name: string) => page.getByTestId("kitchen-ingredient").filter({ has: page.getByText(name, { exact: true }) });
@@ -283,7 +283,7 @@ test("층 지도 화면 캡처 (데스크톱 1440 / 모바일 390)", async ({ pa
       const row = page.getByTestId("staple-row").filter({ has: page.getByText(name, { exact: true }) });
       await row.getByTestId("buy-qty").fill(qty);
       await row.getByTestId("buy-button").click();
-      await expect(row.getByText("구매 완료")).toBeVisible();
+      await expect(page.getByTestId("market-notice")).toContainText(`${name} ${qty}개를 샀어요`);
     }
 
     // 평판 18: 2층 진행도 표시 (시험 전)

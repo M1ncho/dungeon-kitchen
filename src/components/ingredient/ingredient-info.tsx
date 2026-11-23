@@ -135,12 +135,15 @@ export function IngredientHint({
   children,
   className,
   infoClassName,
+  clickTrigger = false,
 }: {
   ingredientId: number;
   children: ReactNode;
   className?: string;
   /** ⓘ 버튼 위치 조정용 */
   infoClassName?: string;
+  /** true 이면 `data-info-trigger` 가 붙은 요소(아이콘·이름)를 눌러도 카드가 열린다 */
+  clickTrigger?: boolean;
 }) {
   const ctx = useContext(Ctx);
   const [open, setOpen] = useState<null | "hover" | "pinned">(null);
@@ -237,6 +240,9 @@ export function IngredientHint({
           e.preventDefault();
           e.stopPropagation();
         }
+      }}
+      onClick={(e) => {
+        if (clickTrigger && (e.target as HTMLElement).closest("[data-info-trigger]")) setOpen((o) => (o === "pinned" ? null : "pinned"));
       }}
       onContextMenu={(e) => {
         // 길게 누르기가 브라우저 메뉴로 가로채이지 않게
