@@ -20,14 +20,32 @@ export const COOKING_SETTINGS = {
   goodRatio: 0.7, // 이하면 좋음, 그 외 보통
 } as const;
 
-// dx/dy 는 맛 지도 좌표 이동량 (가로 +열기/−단맛, 세로 +감칠맛/−마력).
-// pullBp: 중심 쪽으로 당기는 비율(1/10000). toxinDelta: 독성 증감(0 미만으로는 내려가지 않는다).
-export const METHODS = [
-  { code: "grill", name: "굽기", dx: 15, dy: 8, pullBp: 0, toxinDelta: 0, aging: false, sortOrder: 1, description: "열기 +15, 감칠맛 +8" },
-  { code: "boil", name: "끓이기", dx: 0, dy: 0, pullBp: 1500, toxinDelta: -3, aging: false, sortOrder: 2, description: "중심 쪽으로 15% 당김, 독성 −3" },
-  { code: "fry", name: "튀기기", dx: 0, dy: 16, pullBp: 0, toxinDelta: 1, aging: false, sortOrder: 3, description: "감칠맛 +16, 독성 +1" },
-  { code: "pickle", name: "절이기", dx: -12, dy: -6, pullBp: 0, toxinDelta: 0, aging: true, sortOrder: 4, description: "단맛 +12, 마력 +6 (숙성 후 수령)" },
-] as const;
+// 조리법. kind 별 의미는 src/lib/game/cooking.ts 의 MethodKind 주석을 본다.
+// shift: dx/dy 는 맛 지도 좌표 이동량 (가로 +열기/−단맛, 세로 +감칠맛/−마력), pullBp 는 중심 쪽으로 당기는 비율(1/10000), toxinDelta 는 독성 증감(0 미만으로는 내려가지 않는다).
+// tool: true 인 조리법은 장인의 도구가 있어야 쓸 수 있다 (src/db/seed-data/artisans.ts). usesByLevel/sizes/nextCountByLevel 의 인덱스는 도구 강화 단계(0 = 처음 얻음, 1, 2).
+export type MethodSeed = {
+  code: string; name: string; dx: number; dy: number; pullBp: number; toxinDelta: number; aging: boolean; sortOrder: number; description: string;
+  agingSeconds: number | null; kind: "shift" | "scale" | "rotate" | "invert_next" | "pull_zone"; param: number; zeroToxin: boolean; tool: boolean;
+  usesByLevel: number[]; sizes: number[] | null; nextCountByLevel: number[] | null;
+};
+const base: Pick<MethodSeed, "agingSeconds" | "kind" | "param" | "zeroToxin" | "tool" | "usesByLevel" | "sizes" | "nextCountByLevel"> = {
+  agingSeconds: null, kind: "shift", param: 0, zeroToxin: false, tool: false, usesByLevel: [1, 1, 1], sizes: null, nextCountByLevel: null,
+};
+export const METHODS: MethodSeed[] = [
+  { ...base, code: "grill", name: "굽기", dx: 15, dy: 8, pullBp: 0, toxinDelta: 0, aging: false, sortOrder: 1, description: "열기 +15, 감칠맛 +8" },
+  { ...base, code: "boil", name: "끓이기", dx: 0, dy: 0, pullBp: 1500, toxinDelta: -3, aging: false, sortOrder: 2, description: "중심 쪽으로 15% 당김, 독성 −3" },
+  { ...base, code: "fry", name: "튀기기", dx: 0, dy: 16, pullBp: 0, toxinDelta: 1, aging: false, sortOrder: 3, description: "감칠맛 +16, 독성 +1" },
+  { ...base, code: "pickle", name: "절이기", dx: -12, dy: -6, pullBp: 0, toxinDelta: 0, aging: true, agingSeconds: 600, sortOrder: 4, description: "단맛 +12, 마력 +6 (숙성 후 수령)" },
+  // ── 장인의 도구 ──
+  { ...base, code: "ferment", name: "발효", dx: 0, dy: 0, pullBp: 0, toxinDelta: 1, aging: true, agingSeconds: 1200, sortOrder: 5, kind: "scale", param: 1.3, tool: true, usesByLevel: [1, 2, 2], sizes: [1.15, 1.3, 1.45],
+    description: "위치를 중심에서 1.3배 멀리, 독성 +1 (숙성 후 수령)" },
+  { ...base, code: "smoke", name: "훈연", dx: 0, dy: 0, pullBp: 0, toxinDelta: -1, aging: false, sortOrder: 6, kind: "rotate", param: 30, tool: true, usesByLevel: [1, 2, 2], sizes: [15, 30, 45],
+    description: "중심 기준 시계 방향 30° 회전(열기 → 마력 쪽), 독성 −1" },
+  { ...base, code: "grind", name: "갈기", dx: 0, dy: 0, pullBp: 0, toxinDelta: 0, aging: false, sortOrder: 7, kind: "invert_next", param: 0, zeroToxin: true, tool: true, usesByLevel: [1, 2, 2], nextCountByLevel: [1, 1, 2],
+    description: "다음에 넣는 재료의 방향을 뒤집고 독성을 0으로" },
+  { ...base, code: "steam", name: "찌기", dx: 0, dy: 0, pullBp: 0, toxinDelta: -1, aging: false, sortOrder: 8, kind: "pull_zone", param: 0.2, tool: true, usesByLevel: [1, 2, 2], sizes: [0.15, 0.2, 0.25],
+    description: "가장 가까운 구역 중심 쪽으로 20% 이동, 독성 −1" },
+];
 
 // 요리 구역: 원(중심, 반지름). 표식이 안에 있을 때만 완성할 수 있다.
 // unlockFloor: 이 구역을 쓸 수 있는 층 (해금한 최고 층 기준). 깊은 층의 구역일수록 지도 바깥쪽에 있다.

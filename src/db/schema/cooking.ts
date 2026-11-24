@@ -48,6 +48,15 @@ export const cookingMethods = pgTable(
     aging: boolean("aging").notNull().default(false), // 숙성 후 수령
     sortOrder: smallint("sort_order").notNull().default(0),
     description: text("description").notNull().default(""),
+    // ── 장인의 도구용 (유형·크기·횟수). 의미는 src/lib/game/cooking.ts 의 MethodKind 주석 ──
+    agingSeconds: integer("aging_seconds"), // 숙성 시간(초). null 이면 cooking_settings.aging_seconds
+    kind: text("kind").notNull().default("shift"), // shift | scale | rotate | invert_next | pull_zone
+    param: doublePrecision("param").notNull().default(0),
+    zeroToxin: boolean("zero_toxin").notNull().default(false),
+    tool: boolean("tool").notNull().default(false), // 장인의 도구가 있어야 쓸 수 있다
+    usesByLevel: jsonb("uses_by_level").$type<number[]>().notNull().default([1, 1, 1]),
+    sizes: jsonb("sizes").$type<number[] | null>(),
+    nextCountByLevel: jsonb("next_count_by_level").$type<number[] | null>(),
   },
   (t) => [check("cooking_methods_pull_check", sql`${t.pullBp} between 0 and 10000`)],
 );

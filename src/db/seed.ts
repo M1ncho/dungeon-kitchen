@@ -4,7 +4,7 @@ import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import {
   cookingMethods, cookingSettings, customerTypes, dishModifiers, dishZones, dungeonFloors, floorIngredients, ingredients,
   customerFloorWeights, helpTopics, marketSettings, orderSettings, orderTexts, peddlerRules, salesSettings, tutorialLines, tutorialSettings,
-  tutorialTips, peddlerLines, requestSettings, requestTexts, criticSettings, criticTexts,
+  tutorialTips, peddlerLines, artisans, requestSettings, requestTexts, criticSettings, criticTexts,
 } from "./schema";
 import * as schema from "./schema";
 import { COOKING_SETTINGS, METHODS, MODIFIERS, ZONES } from "./seed-data/cooking";
@@ -12,6 +12,7 @@ import { CUSTOMER_ORDER_PROFILES, ORDER_SETTINGS, ORDER_TEXTS } from "./seed-dat
 import { CUSTOMER_FLOOR_WEIGHTS, CUSTOMER_TASTES, SALES_SETTINGS } from "./seed-data/sales";
 import { EXAM_SETTINGS, FLOORS, FLOOR_DROPS, NEW_CUSTOMERS, PEDDLER_ORIGIN_WEIGHTS, PEDDLER_RULES, SUPERVISORS } from "./seed-data/floors";
 import { REQUEST_SETTINGS, REQUEST_TEXTS } from "./seed-data/requests";
+import { ARTISANS } from "./seed-data/artisans";
 import { PEDDLER_LINES } from "./seed-data/peddler-lines";
 import { CRITIC_SETTINGS, CRITIC_TEXTS, FLOOR_CRITIC_STRICTNESS } from "./seed-data/critic";
 import { HELP_TOPICS, TUTORIAL_CUSTOMER, TUTORIAL_LINES, TUTORIAL_SETTINGS, TUTORIAL_TIPS } from "./seed-data/tutorial";
@@ -170,6 +171,8 @@ export async function seedWorld(db: PgDatabase<PgQueryResultHKT, typeof schema>)
           name: excluded("name"), dx: excluded("dx"), dy: excluded("dy"), pullBp: excluded("pull_bp"),
           toxinDelta: excluded("toxin_delta"), aging: excluded("aging"), sortOrder: excluded("sort_order"),
           description: excluded("description"),
+          agingSeconds: excluded("aging_seconds"), kind: excluded("kind"), param: excluded("param"), zeroToxin: excluded("zero_toxin"),
+          tool: excluded("tool"), usesByLevel: excluded("uses_by_level"), sizes: excluded("sizes"), nextCountByLevel: excluded("next_count_by_level"),
         },
       });
     await tx
@@ -289,6 +292,18 @@ export async function seedWorld(db: PgDatabase<PgQueryResultHKT, typeof schema>)
       .insert(requestTexts)
       .values(REQUEST_TEXTS.map((t) => ({ ...t })))
       .onConflictDoUpdate({ target: requestTexts.code, set: { outcome: excluded("outcome"), speaker: excluded("speaker"), text: excluded("text") } });
+    // 층별 장인과 도구 (code 기준 upsert, 빠진 code 는 지운다)
+    await tx
+      .insert(artisans)
+      .values(ARTISANS.map((a) => ({ ...a })))
+      .onConflictDoUpdate({
+        target: artisans.code,
+        set: Object.fromEntries(
+          ["floor_no", "name", "title", "tool_name", "method_code", "request_zone_code", "request_min_quality", "request_count", "greeting", "request_text", "thanks_text", "usage_text", "idle_text", "upgrade_texts", "upgrades"].map((k) => [
+            k.replace(/_([a-z])/g, (_, c) => c.toUpperCase()), excluded(k),
+          ]),
+        ) as never,
+      });
     // 행상 한마디 (code 기준 upsert, 빠진 code 는 지운다)
     await tx
       .insert(peddlerLines)

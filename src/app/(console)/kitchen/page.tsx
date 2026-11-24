@@ -14,7 +14,7 @@ async function KitchenContent({ searchParams }: { searchParams: Promise<{ [key: 
   const params = await searchParams;
   const orderId = typeof params.order === "string" && UUID.test(params.order) ? params.order : null;
   const now = serverNow();
-  const [{ config, methods, allZones, unlockedFloor, inventory, discoveredZoneIds }, order] = await Promise.all([
+  const [{ config, methods, allZones, unlockedFloor, inventory, discoveredZoneIds, tools, toolSources }, order] = await Promise.all([
     getKitchenData(cook.id),
     // 주문 모드: 대기 중인 내 주문일 때만. 클라이언트로는 주문 문장과 공개된 힌트(OrderView)만 간다.
     orderId ? getWaitingOrderView(db, cook.id, now, orderId) : Promise.resolve(null),
@@ -28,6 +28,8 @@ async function KitchenContent({ searchParams }: { searchParams: Promise<{ [key: 
       zones={allZones}
       unlockedFloor={unlockedFloor}
       discoveredZoneIds={discoveredZoneIds}
+      tools={tools}
+      toolSources={toolSources}
       agingMinutes={Math.round(config.agingSeconds / 60)}
       order={order}
       serverNowMs={now.getTime()}

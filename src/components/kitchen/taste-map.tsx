@@ -23,6 +23,7 @@ export function TasteMap({
   path,
   position,
   preview,
+  previewPath,
   activeZoneCode,
   reveal,
 }: {
@@ -32,6 +33,8 @@ export function TasteMap({
   position: Point;
   /** 재료에 마우스를 올렸을 때의 이동 미리보기 (현재 위치 → 도착 위치) */
   preview: Point | null;
+  /** 미리보기 경로 (회전은 호, 끌어당김·확대는 직선 점선 화살표). 없으면 현재 위치 → preview 직선 */
+  previewPath?: Point[] | null;
   activeZoneCode: string | null;
   /** 주문 손님 응대 후에만 공개되는 목표 위치와 판정 범위 원 (응대 전에는 절대 넘기지 않는다) */
   reveal?: { target: Point; rings: { label: string; r: number }[] } | null;
@@ -147,9 +150,9 @@ export function TasteMap({
       {/* 이동 미리보기 (점선) */}
       {preview && (
         <g data-testid="map-preview">
-          <line
-            x1={sx(position)} y1={sy(position)} x2={sx(preview)} y2={sy(preview)}
-            className="stroke-dk-red" strokeWidth="2.2" strokeDasharray="4 3" strokeLinecap="round"
+          <polyline
+            points={(previewPath && previewPath.length > 1 ? previewPath : [position, preview]).map((p) => `${sx(p)},${sy(p)}`).join(" ")}
+            fill="none" className="stroke-dk-red" strokeWidth="2.2" strokeDasharray="4 3" strokeLinecap="round" strokeLinejoin="round"
           />
           <circle cx={sx(preview)} cy={sy(preview)} r="4" fill="none" className="stroke-dk-red" strokeWidth="2" strokeDasharray="2 2" />
         </g>

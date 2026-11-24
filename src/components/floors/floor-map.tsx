@@ -122,6 +122,9 @@ function FloorRow({ f, data, pending, onMove }: { f: FloorCard; data: FloorMapDa
               <Preview label="재료" items={f.opens.ingredients} />
               <Preview label="요리 구역" items={f.opens.zones} />
               <Preview label="새 손님" items={f.opens.customers} />
+              {f.opens.tool && (
+                <Preview label="조리 도구" items={[`${f.opens.tool.toolName}(${f.opens.tool.methodName}) — ${f.opens.tool.artisan}에게 부탁을 들어주면 받아요`]} />
+              )}
             </div>
           )}
 

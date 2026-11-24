@@ -5,7 +5,7 @@ import { db } from "../index";
 import { canMoveTo, type MoveResult } from "../../lib/game/floors";
 import { serverNow } from "../../lib/clock";
 import {
-  customerFloorWeights, customerTypes, dishZones, dungeonFloors, ingredients, profiles, salesSessions, shops,
+  artisans, cookingMethods, customerFloorWeights, customerTypes, dishZones, dungeonFloors, ingredients, profiles, salesSessions, shops,
 } from "../schema";
 
 // 모든 함수는 세션에서 얻은 userId 를 where 에 넣는다.
@@ -22,7 +22,7 @@ export type FloorCard = {
   /** 해금한 층일 때만 의미 있다: 지금 이동할 수 있는지, 없다면 이유 */
   move: MoveResult;
   /** 잠긴 층 미리보기: 이 층에서 처음 열리는 재료·구역·손님 이름 */
-  opens: { ingredients: string[]; zones: string[]; customers: string[] };
+  opens: { ingredients: string[]; zones: string[]; customers: string[]; /** 이 층의 장인과 그가 주는 도구 */ tool: { artisan: string; toolName: string; methodName: string } | null };
   /** 이 층의 승급 시험 손님이 응대를 기다리는 중인가 (시험 손님 뷰는 아래 exam) */
   examWaiting: boolean;
 };
@@ -44,7 +44,7 @@ export type FloorMapData = {
 /** 층 지도(/floors) 데이터. */
 export async function getFloorMap(userId: string): Promise<FloorMapData> {
   const now = serverNow();
-  const [floors, ingRows, zoneRows, customerRows, weightRows, [prof], [shop], [open], exam] = await Promise.all([
+  const [floors, ingRows, zoneRows, customerRows, weightRows, [prof], [shop], [open], exam, artisanRows] = await Promise.all([
     db.select().from(dungeonFloors).orderBy(asc(dungeonFloors.floorNo)),
     db.select({ name: ingredients.name, floor: ingredients.unlockFloor, staple: ingredients.isStaple }).from(ingredients),
     db.select({ name: dishZones.name, floor: dishZones.unlockFloor }).from(dishZones),
@@ -57,6 +57,10 @@ export async function getFloorMap(userId: string): Promise<FloorMapData> {
     db.select({ floorId: shops.floorId }).from(shops).where(and(eq(shops.ownerId, userId), eq(shops.shopType, "food_stall"))),
     db.select({ id: salesSessions.id }).from(salesSessions).where(and(eq(salesSessions.userId, userId), eq(salesSessions.status, "open"))),
     getWaitingOrderView(db, userId, now, undefined, "exam"),
+    db
+      .select({ floorNo: artisans.floorNo, name: artisans.name, toolName: artisans.toolName, methodName: cookingMethods.name })
+      .from(artisans)
+      .innerJoin(cookingMethods, eq(cookingMethods.code, artisans.methodCode)),
   ]);
   const floorNoOfId = new Map(floors.map((f) => [f.id, f.floorNo]));
   const currentFloor = floorNoOfId.get(shop?.floorId ?? -1) ?? 1;
@@ -83,6 +87,7 @@ export async function getFloorMap(userId: string): Promise<FloorMapData> {
       ingredients: ingRows.filter((i) => i.floor === f.floorNo && !i.staple).map((i) => i.name),
       zones: zoneRows.filter((z) => z.floor === f.floorNo).map((z) => z.name),
       customers: customerRows.filter((c) => c.examFloor == null && firstFloorOfCustomer.get(c.id) === f.floorNo).map((c) => c.name),
+      tool: artisanRows.filter((a) => a.floorNo === f.floorNo).map((a) => ({ artisan: a.name, toolName: a.toolName, methodName: a.methodName }))[0] ?? null,
     },
     examWaiting: exam?.examFloor === f.floorNo,
   }));

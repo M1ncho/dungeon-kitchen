@@ -8,6 +8,7 @@ import { HomeBody, type FacilityTile } from "@/components/home/home-body";
 import { InventoryBar } from "@/components/home/inventory-bar";
 import { getBoardSummary } from "@/db/queries/board";
 import { getCollectedDishCount } from "@/db/queries/kitchen";
+import { getArtisanAlert } from "@/db/queries/artisans";
 import { getExamAlert } from "@/db/queries/floors";
 import { getUnseenReviewCount } from "@/db/queries/guide";
 import { getSalesStatus } from "@/db/queries/stall";
@@ -17,7 +18,7 @@ import { requireCook } from "@/lib/session";
 
 async function HomeContent() {
   const cook = await requireCook();
-  const [snapshot, inventory, dishCount, sales, examAlert, board, newReviews] = await Promise.all([
+  const [snapshot, inventory, dishCount, sales, examAlert, board, newReviews, artisan] = await Promise.all([
     getPeddlerSnapshot(cook.id),
     getInventory(cook.id),
     getCollectedDishCount(cook.id),
@@ -25,6 +26,7 @@ async function HomeContent() {
     getExamAlert(cook.id),
     getBoardSummary(cook.id, serverNow()),
     getUnseenReviewCount(cook.id),
+    getArtisanAlert(cook.id), // 지금 층의 장인 (가 본 층에서 등장한 경우만)
   ]);
 
   const shopName = cook.shop?.name ?? "무명 포장마차";
@@ -127,7 +129,7 @@ async function HomeContent() {
         left={left}
         tiles={tiles}
         alert={
-          (examAlert || newReviews > 0) && (
+          (examAlert || newReviews > 0 || artisan) && (
             <>
           {newReviews > 0 && (
             <div
@@ -136,6 +138,18 @@ async function HomeContent() {
             >
               <p className="font-display text-lg leading-snug">🎭 가면 미식가의 평이 가이드북에 실렸어요!</p>
               <ChunkyButton size="sm" variant="paper" href="/guide" data-testid="review-alert-go">가이드북 보기</ChunkyButton>
+            </div>
+          )}
+          {artisan && (
+            <div
+              className={`mb-4 flex flex-col gap-2 rounded-2xl border-[3px] border-dk-outline p-3 text-dk-outline shadow-[0_4px_0_var(--dk-shadow)] sm:flex-row sm:items-center sm:justify-between ${artisan.unseen || artisan.state === "request" ? "bg-dk-lantern" : "bg-dk-paper"}`}
+              data-testid="artisan-alert" data-artisan={artisan.code} data-state={artisan.state} data-unseen={artisan.unseen}
+            >
+              <p className="font-display text-lg leading-snug">
+                🔨 {artisan.state === "request" ? `${artisan.name}이(가) 부탁이 있대요!` : `${artisan.name}의 공방`}
+                <span className="ml-2 text-base">{artisan.floorNo}층 장인</span>
+              </p>
+              <ChunkyButton size="sm" variant="paper" href="/artisan" data-testid="artisan-alert-go">{artisan.state === "request" ? "부탁 들으러 가기" : "장인 만나기"}</ChunkyButton>
             </div>
           )}
           {examAlert && (

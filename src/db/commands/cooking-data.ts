@@ -1,7 +1,7 @@
-import { asc, inArray } from "drizzle-orm";
-import type { CookingConfig, CookingIngredient, CookingMethod, CookingZone } from "../../lib/game/cooking";
+import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
+import type { CookingConfig, CookingIngredient, CookingMethod, CookingZone, MethodKind, ToolLevels } from "../../lib/game/cooking";
 import type { Database } from "../index";
-import { cookingMethods, cookingSettings, dishModifiers, dishZones, ingredients } from "../schema";
+import { artisans, cookingMethods, cookingSettings, dishModifiers, dishZones, ingredients, userArtisans } from "../schema";
 
 type Executor = Pick<Database, "select">;
 
@@ -13,7 +13,7 @@ export type KitchenZone = CookingZone & {
   description: string;
 };
 export type KitchenMethod = CookingMethod & { name: string; description: string };
-export type KitchenConfig = Omit<CookingConfig, "zones"> & { zones: KitchenZone[]; agingSeconds: number };
+export type KitchenConfig = Omit<CookingConfig, "zones" | "agingSeconds"> & { zones: KitchenZone[]; agingSeconds: number };
 
 /**
  * 조리 설정·구역·수식어·조리법 (마스터 데이터, 유저 정보 없음).
@@ -47,6 +47,8 @@ export async function loadCookingMaster(
     },
     methods: methodRows.map((m) => ({
       code: m.code, name: m.name, dx: m.dx, dy: m.dy, pullBp: m.pullBp, toxinDelta: m.toxinDelta, aging: m.aging, description: m.description,
+      agingSeconds: m.agingSeconds, kind: m.kind as MethodKind, param: m.param, zeroToxin: m.zeroToxin, tool: m.tool,
+      usesByLevel: m.usesByLevel, sizes: m.sizes, nextCountByLevel: m.nextCountByLevel,
     })),
   };
 }
@@ -62,4 +64,17 @@ export function toCookingIngredient(r: typeof ingredients.$inferSelect): Cooking
     id: r.id, code: r.code, shortName: r.shortName || r.name,
     heat: r.heat, umami: r.umami, sweet: r.sweet, mana: r.mana, toxin: r.toxin,
   };
+}
+
+/**
+ * 유저가 가진 장인의 도구와 강화 단계 (조리법 code → 0/1/2). 도구가 없으면 키가 없다 → simulateCooking 이 그 조리법을 거부한다.
+ * 조리 검증(cookDish·serveCustom)과 주방 화면이 같은 값을 쓴다.
+ */
+export async function loadUserTools(db: Executor, userId: string): Promise<ToolLevels> {
+  const rows = await db
+    .select({ code: artisans.methodCode, level: userArtisans.toolLevel })
+    .from(userArtisans)
+    .innerJoin(artisans, eq(artisans.code, userArtisans.artisanCode))
+    .where(and(eq(userArtisans.userId, userId), isNotNull(userArtisans.toolLevel)));
+  return Object.fromEntries(rows.map((r) => [r.code, r.level ?? 0]));
 }

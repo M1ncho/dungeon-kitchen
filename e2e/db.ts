@@ -189,3 +189,50 @@ export async function readCriticVisits(nickname: string) {
   const rows = await db.select().from(schema.criticVisits).where(eq(schema.criticVisits.userId, p.id));
   return rows.sort((a, b) => a.visitedAt.getTime() - b.visitedAt.getTime());
 }
+
+
+// ───── 층별 장인과 도구 (e2e/artisan.spec.ts) ─────
+
+async function userIdOf(nickname: string) {
+  const { db, schema } = await load();
+  const [p] = await db.select({ id: schema.profiles.id }).from(schema.profiles).where(eq(schema.profiles.nickname, nickname));
+  return p.id;
+}
+
+/** 창고에 요리를 직접 넣는다 (구역 코드·품질 지정). */
+export async function giveDish(nickname: string, zoneCode: string, quality: number, name = "테스트 요리") {
+  const { db, schema } = await load();
+  const userId = await userIdOf(nickname);
+  const [zone] = await db.select({ id: schema.dishZones.id }).from(schema.dishZones).where(eq(schema.dishZones.code, zoneCode));
+  const [ing] = await db.select({ id: schema.ingredients.id }).from(schema.ingredients).limit(1);
+  const now = new Date();
+  await db.insert(schema.userDishes).values({
+    userId, zoneId: zone.id, mainIngredientId: ing.id, name, quality, finalX: 0, finalY: 0, toxin: 0, steps: [], ingredientCost: 10, readyAt: now, collectedAt: now,
+  });
+}
+
+/** 보유 재료를 직접 더한다 (재료 code → 개수). */
+export async function giveIngredients(nickname: string, stock: Record<string, number>) {
+  const { db, schema } = await load();
+  const userId = await userIdOf(nickname);
+  for (const [code, quantity] of Object.entries(stock)) {
+    const [ing] = await db.select({ id: schema.ingredients.id }).from(schema.ingredients).where(eq(schema.ingredients.code, code));
+    await db.insert(schema.userIngredients).values({ userId, ingredientId: ing.id, quantity })
+      .onConflictDoUpdate({ target: [schema.userIngredients.userId, schema.userIngredients.ingredientId], set: { quantity } });
+  }
+}
+
+/** 장인의 도구를 바로 준다 (단계 0~2). 장인이 아직 등장하지 않았어도 행을 만든다. */
+export async function giveTool(nickname: string, artisanCode: string, level: number) {
+  const { db, schema } = await load();
+  const userId = await userIdOf(nickname);
+  await db.insert(schema.userArtisans).values({ userId, artisanCode, toolLevel: level, deliveredAt: new Date(), seenAt: new Date() })
+    .onConflictDoUpdate({ target: [schema.userArtisans.userId, schema.userArtisans.artisanCode], set: { toolLevel: level, deliveredAt: new Date() } });
+}
+
+export async function readArtisan(nickname: string, artisanCode: string) {
+  const { db, schema } = await load();
+  const userId = await userIdOf(nickname);
+  const rows = await db.select().from(schema.userArtisans).where(eq(schema.userArtisans.userId, userId));
+  return rows.find((r) => r.artisanCode === artisanCode) ?? null;
+}

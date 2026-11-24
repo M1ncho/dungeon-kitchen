@@ -1,7 +1,8 @@
 import "server-only";
 import { and, asc, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../index";
-import { loadCookingMaster, toCookingIngredient } from "../commands/cooking-data";
+import { loadCookingMaster, loadUserTools, toCookingIngredient } from "../commands/cooking-data";
+import { getToolSources } from "./artisans";
 import { dishZones, ingredients, profiles, recipeDiscoveries, userDishes, userIngredients } from "../schema";
 
 // 모든 함수는 세션에서 얻은 userId 를 where 에 넣는다.
@@ -10,7 +11,7 @@ import { dishZones, ingredients, profiles, recipeDiscoveries, userDishes, userIn
 export async function getKitchenData(userId: string) {
   const [prof] = await db.select({ unlocked: profiles.unlockedFloor }).from(profiles).where(eq(profiles.id, userId));
   const unlockedFloor = prof?.unlocked ?? 1;
-  const [master, owned, discovered] = await Promise.all([
+  const [master, owned, discovered, tools, toolSources] = await Promise.all([
     loadCookingMaster(db, unlockedFloor), // config.zones 는 해금한 층의 구역만 (시뮬레이션용), allZones 는 지도에 윤곽을 그릴 전체 구역
     db
       .select({ ing: ingredients, quantity: userIngredients.quantity })
@@ -22,6 +23,8 @@ export async function getKitchenData(userId: string) {
       .select({ zoneId: recipeDiscoveries.zoneId, bestQuality: recipeDiscoveries.bestQuality })
       .from(recipeDiscoveries)
       .where(eq(recipeDiscoveries.userId, userId)),
+    loadUserTools(db, userId), // 가진 도구와 강화 단계 (서버가 조리를 검증할 때 쓰는 값과 같다)
+    getToolSources(),
   ]);
   return {
     ...master,
@@ -34,6 +37,8 @@ export async function getKitchenData(userId: string) {
       quantity,
     })),
     discoveredZoneIds: discovered.map((d) => d.zoneId),
+    tools,
+    toolSources,
   };
 }
 

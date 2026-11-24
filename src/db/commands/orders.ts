@@ -9,7 +9,7 @@ import { basePriceOf } from "../../lib/game/sales";
 import type { Database } from "../index";
 import { customerTypes, dungeonFloors, profiles, sessionDisplays, shops, specialOrders, userDishes } from "../schema";
 import { consumeIngredients, parseSteps } from "./cook";
-import { loadCookingIngredients, loadCookingMaster } from "./cooking-data";
+import { loadCookingIngredients, loadCookingMaster, loadUserTools } from "./cooking-data";
 import { loadOrderDictionaries, loadOrderSettings, toOrderConfig } from "./order-spawn";
 import { loadSalesSettings, settleInTx } from "./sales";
 import { onTutorialOrderServed } from "./tutorial";
@@ -333,8 +333,14 @@ export async function serveCustom(db: Database, input: { userId: string; orderId
 
     const consumed = await consumeIngredients(tx, input.userId, steps);
     if (!consumed) throw new Abort("insufficient_ingredients");
-    const [{ config: cookingConfig, methods }, ings] = await Promise.all([loadCookingMaster(tx), loadCookingIngredients(tx, [...consumed.keys()])]);
-    const sim = simulateCooking(steps, ings, methods, cookingConfig);
+    const [prof] = await tx.select({ unlocked: profiles.unlockedFloor }).from(profiles).where(eq(profiles.id, input.userId));
+    // 찌기가 끌어당기는 "해금된 구역"을 주방과 똑같이 가리도록 해금 층을 넘긴다
+    const [{ config: cookingConfig, methods }, ings, tools] = await Promise.all([
+      loadCookingMaster(tx, prof?.unlocked ?? 1),
+      loadCookingIngredients(tx, [...consumed.keys()]),
+      loadUserTools(tx, input.userId),
+    ]);
+    const sim = simulateCooking(steps, ings, methods, cookingConfig, tools);
     const blocking = sim.problems.find((p) => p !== "outside_zone"); // 구역 밖은 허용
     if (blocking) throw new Abort(blocking);
 

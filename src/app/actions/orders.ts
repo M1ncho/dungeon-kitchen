@@ -19,7 +19,10 @@ const MESSAGES: Record<OrderFailure, string> = {
   unknown_step: "알 수 없는 재료나 조리법이 있습니다.",
   too_few_ingredients: "재료를 2개 이상 넣어야 합니다.",
   too_many_ingredients: "재료는 최대 4개까지 넣을 수 있습니다.",
-  method_repeated: "같은 조리법은 한 번만 쓸 수 있습니다.",
+  method_repeated: "같은 조리법은 정해진 횟수까지만 쓸 수 있습니다.",
+  method_too_early: "조리법은 재료를 하나 이상 넣은 뒤에 쓸 수 있습니다.",
+  tool_missing: "아직 가지고 있지 않은 도구의 조리법입니다.",
+  size_locked: "도구를 강화해야 효과 크기를 고를 수 있습니다.",
   toxin_too_high: "독성이 너무 높아 낼 수 없습니다.",
   outside_zone: "낼 수 없는 요리입니다.",
 };

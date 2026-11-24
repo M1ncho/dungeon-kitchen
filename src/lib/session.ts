@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/db";
 import { ensureExamOrder } from "@/db/commands/exams";
 import { publishDueCriticReviews } from "@/db/commands/critic";
+import { ensureArtisans } from "@/db/commands/artisans";
 import { settleSessions } from "@/db/commands/sales";
 import { healTutorial } from "@/db/commands/tutorial";
 import { getFoodStall, getProfile } from "@/db/queries/player";
@@ -28,6 +29,7 @@ const settleOnce = cache(async (userId: string) => {
   await settleSessions(db, userId, now);
   await publishDueCriticReviews(db, now); // 발행 시각이 지난 평론가의 평을 가이드북에 싣는다 (누가 접속하든 지연 실행)
   await ensureExamOrder(db, userId, now);
+  await ensureArtisans(db, userId); // 가 본 층의 장인이 아직 등장하지 않았다면 등장시킨다 (기존 계정 백필 포함)
   await healTutorial(db, userId, now); // 안내 주문 손님이 떠났다면 안내를 마무리 단계로
 });
 

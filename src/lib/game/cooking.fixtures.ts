@@ -19,7 +19,11 @@ export const seedIngredients: CookingIngredient[] = [
   ...STAPLES.map(([code, , , heat, umami, sweet, mana, toxin]) => mk(code, heat, umami, sweet, mana, toxin)),
 ];
 export const STAPLE_CODES: string[] = STAPLES.map((s) => s[0]);
-export const seedMethods: CookingMethod[] = METHODS.map((m) => ({ ...m }));
+/** 기본 조리법 4종 (도구 없이 쓸 수 있는 것). 기존 조합 테스트는 이것만 쓴다. */
+export const seedMethods: CookingMethod[] = METHODS.filter((m) => !m.tool).map((m) => ({ ...m }));
+/** 장인의 도구 조리법 (발효·훈연·갈기·찌기) */
+export const toolMethods: CookingMethod[] = METHODS.filter((m) => m.tool).map((m) => ({ ...m }));
+export const allSeedMethods: CookingMethod[] = [...seedMethods, ...toolMethods];
 export const ing = (code: string) => seedIngredients.find((i) => i.code === code)!;
 export const I = (code: string): CookingStep => ({ type: "ingredient", id: ing(code).id });
 export const M = (code: string): CookingStep => ({ type: "method", code });

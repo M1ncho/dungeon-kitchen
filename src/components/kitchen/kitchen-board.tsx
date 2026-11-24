@@ -13,8 +13,8 @@ import { IngredientGlyph } from "@/components/cozy/ingredient-glyph";
 import { StarIcon } from "@/components/cozy/icons";
 import { ChunkyButton, CozyBadge, PaperCard, Stamp, WoodPanel } from "@/components/cozy/primitives";
 import {
-  QUALITY_LABEL, applyIngredient, simulateCooking,
-  type CookingConfig, type CookingIngredient, type CookingMethod, type CookingProblem, type CookingStep, type Quality,
+  QUALITY_LABEL, applyIngredient, methodHasSizes, methodMaxUses, methodNextCount, methodParam, previewMethod, simulateCooking,
+  type CookingConfig, type CookingIngredient, type CookingMethod, type CookingProblem, type CookingStep, type Point, type Quality, type ToolLevels,
 } from "@/lib/game/cooking";
 import { TUTORIAL_RECIPE, kitchenPhase } from "@/lib/game/tutorial";
 import { useTutorial, useTutorialPhase } from "@/components/tutorial/tutorial-layer";
@@ -31,10 +31,21 @@ const PROBLEM_TEXT: Record<CookingProblem, string> = {
   unknown_step: "알 수 없는 재료가 있어요.",
   too_few_ingredients: "재료를 2개 이상 넣어야 해요.",
   too_many_ingredients: "재료는 최대 4개까지예요.",
-  method_repeated: "같은 조리법은 한 번만 쓸 수 있어요.",
+  method_repeated: "같은 조리법은 정해진 횟수까지만 쓸 수 있어요.",
+  method_too_early: "조리법은 재료를 하나 넣은 뒤에 쓸 수 있어요.",
+  tool_missing: "아직 얻지 못한 도구의 조리법이에요.",
+  size_locked: "도구를 강화해야 효과 크기를 고를 수 있어요.",
   toxin_too_high: "독성이 너무 높아요. 물이나 끓이기로 낮춰 보세요.",
   outside_zone: "표식이 요리 구역 밖에 있어요.",
 };
+
+/** 효과 크기 후보의 표시 문구 (확대 ×배율 / 회전 각도° / 끌어당김 %) */
+function sizeLabel(kind: CookingMethod["kind"], v: number) {
+  if (kind === "scale") return `×${v}`;
+  if (kind === "rotate") return `${v}°`;
+  return `${Math.round(v * 100)}%`;
+}
+const SIZE_NAMES = ["약", "보통", "강"] as const;
 
 function direction(dx: number, dy: number) {
   const parts: string[] = [];
@@ -59,10 +70,11 @@ export function KitchenBoard({
   methods,
   zones,
   discoveredZoneIds,
-  agingMinutes,
   order = null,
   serverNowMs = 0,
   unlockedFloor = 1,
+  tools = {},
+  toolSources = {},
 }: {
   config: CookingConfig;
   ingredients: KitchenIngredient[];
@@ -75,17 +87,23 @@ export function KitchenBoard({
   serverNowMs?: number;
   /** 해금한 최고 층: 이보다 깊은 층의 구역은 잠긴 구역으로 윤곽만 보이고, 그 안에서는 완성할 수 없다 */
   unlockedFloor?: number;
+  /** 가진 도구와 강화 단계 (조리법 code → 0/1/2). 서버가 조리를 검증할 때 쓰는 값과 같다. */
+  tools?: ToolLevels;
+  /** 도구 조리법을 어느 층 장인에게서 얻는지 (없는 도구의 실루엣 문구) */
+  toolSources?: Record<string, { floorNo: number; toolName: string; artisanName: string }>;
 }) {
   const router = useRouter();
   const [orderResult, setOrderResult] = useState<OrderResult | null>(null);
   const [steps, setSteps] = useState<CookingStep[]>([]);
   const [hoverId, setHoverId] = useState<number | null>(null);
+  const [hoverMethod, setHoverMethod] = useState<{ code: string; size?: number } | null>(null);
+  const [sizePicker, setSizePicker] = useState<string | null>(null); // 효과 크기를 고르는 중인 조리법
   const [revealed, setRevealed] = useState<CookState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   // 조리 중 실험(넣기·되돌리기·처음부터)은 모두 클라이언트에서만 계산한다. 서버 요청은 "완성하기" 한 번뿐.
-  const result = useMemo(() => simulateCooking(steps, ingredients, methods, config), [steps, ingredients, methods, config]);
+  const result = useMemo(() => simulateCooking(steps, ingredients, methods, config, tools), [steps, ingredients, methods, config, tools]);
 
   const used = useMemo(() => {
     const m = new Map<number, number>();
@@ -117,20 +135,51 @@ export function KitchenBoard({
   const inLocked = result.zone ? null : mapZones.filter((z) => z.locked && Math.hypot(result.position.x - z.centerX, result.position.y - z.centerY) <= z.radius).sort((a, b) => Math.hypot(result.position.x - a.centerX, result.position.y - a.centerY) / a.radius - Math.hypot(result.position.x - b.centerX, result.position.y - b.centerY) / b.radius)[0] ?? null;
 
   const hovering = hoverId != null ? ingredients.find((i) => i.id === hoverId) : null;
-  const previewPoint =
+  const grindNow = result.pendingGrind.count > 0 ? { zeroToxin: result.pendingGrind.zeroToxin } : null; // 갈기 적용 대기: 방향 반전 + 독성 0
+  const ingredientPreview =
     hovering && !full && (used.get(hovering.id) ?? 0) < hovering.quantity
-      ? applyIngredient(result.position, result.toxin, hovering, config).pos
+      ? applyIngredient(result.position, result.toxin, hovering, config, grindNow).pos
       : null;
+  // 조리법 미리보기: 마우스를 올린 조리법의 도착 위치와 경로 (회전은 호, 끌어당김·확대는 점선 화살표)
+  const hoveredMethod = hoverMethod ? methods.find((m) => m.code === hoverMethod.code) : null;
+  const methodPreview =
+    hoveredMethod && !methodBlocked(hoveredMethod)
+      ? previewMethod(result.position, result.toxin, hoveredMethod, config, methodParam(hoveredMethod, tools[hoveredMethod.code] ?? 0, hoverMethod?.size))
+      : null;
+  const previewPoint: Point | null = ingredientPreview ?? (methodPreview && methodPreview.curve.length > 0 ? methodPreview.pos : null);
+  const previewPath: Point[] | null = ingredientPreview ? [result.position, ingredientPreview] : methodPreview && methodPreview.curve.length > 0 ? methodPreview.curve : null;
+
+  function methodLevel(m: CookingMethod) {
+    return tools[m.code] ?? 0;
+  }
+  /** 지금 이 조리법을 쓸 수 없는 이유 (쓸 수 있으면 null) */
+  function methodBlocked(m: CookingMethod): string | null {
+    if (m.tool && tools[m.code] === undefined) return "locked";
+    if ((result.methodUses[m.code] ?? 0) >= methodMaxUses(m, methodLevel(m))) return "used";
+    if (result.ingredientCount < 1) return "no_ingredient"; // 모든 조리법은 재료를 하나 이상 넣은 뒤에만
+    // 갈기: 갈아 둔 재료가 들어갈 자리가 남아 있어야 한다
+    if (m.kind === "invert_next" && config.maxIngredients - result.ingredientCount <= result.pendingGrind.count) return "no_slot";
+    return null;
+  }
 
   function addIngredient(i: KitchenIngredient) {
     if (full || (used.get(i.id) ?? 0) >= i.quantity) return;
     setSteps((s) => [...s, { type: "ingredient", id: i.id }]);
     setServerError(null);
   }
-  function addMethod(code: string) {
-    if (result.usedMethods.includes(code)) return;
-    setSteps((s) => [...s, { type: "method", code }]);
+  function addMethod(code: string, size?: number) {
+    const m = methods.find((x) => x.code === code);
+    if (!m || methodBlocked(m)) return;
+    setSteps((s) => [...s, size === undefined ? { type: "method", code } : { type: "method", code, size }]);
+    setSizePicker(null);
+    setHoverMethod(null);
     setServerError(null);
+  }
+  /** 2단계 강화한 도구는 누를 때마다 효과 크기를 고른다. 그 외에는 바로 넣는다. */
+  function pressMethod(m: CookingMethod) {
+    if (methodBlocked(m)) return;
+    if (methodHasSizes(m, methodLevel(m))) setSizePicker((c) => (c === m.code ? null : m.code));
+    else addMethod(m.code);
   }
   const undo = () => {
     if (steps.length <= 1) setAcks({ ack1: false, ack2: false }); // 냄비가 비면 설명을 처음부터 다시 보여 준다
@@ -215,6 +264,7 @@ export function KitchenBoard({
               path={result.path}
               position={result.position}
               preview={previewPoint}
+              previewPath={previewPath}
               activeZoneCode={result.zone?.code ?? null}
             />
           </PaperCard>
@@ -244,8 +294,9 @@ export function KitchenBoard({
                 const left = i.quantity - (used.get(i.id) ?? 0);
                 const disabled = full || left <= 0;
                 const water = i.code === config.diluentCode;
-                const dx = (i.heat - i.sweet) * config.kScale;
-                const dy = (i.umami - i.mana) * config.kScale;
+                const flip = grindNow && !water ? -1 : 1; // 갈기 적용 대기: 방향이 뒤집히고 독성은 0
+                const dx = (i.heat - i.sweet) * config.kScale * flip;
+                const dy = (i.umami - i.mana) * config.kScale * flip;
                 return (
                   <li key={i.id}>
                    <IngredientHint ingredientId={i.id} infoClassName="bottom-1.5 left-1.5 right-auto">
@@ -274,7 +325,9 @@ export function KitchenBoard({
                         {water ? "중심으로 40%" : direction(dx, dy) || "움직임 없음"}
                       </span>
                       {(water || i.toxin > 0) && (
-                        <span className="text-[11px] leading-none text-dk-red">독성 {water ? "−1" : `+${i.toxin}`}</span>
+                        <span className="text-[11px] leading-none text-dk-red">
+                          {grindNow && !water ? <span data-testid="ground-hint">갈기: 독성 0</span> : <>독성 {water ? "−1" : `+${i.toxin}`}</>}
+                        </span>
                       )}
                       <span className="absolute -right-2 -top-3 rounded-full border-[3px] border-dk-outline bg-dk-lantern px-2 font-display text-sm leading-5 shadow-[0_3px_0_var(--dk-shadow)]">
                         ×{left}
@@ -293,23 +346,76 @@ export function KitchenBoard({
           </WoodPanel>
 
           <WoodPanel title="조리법">
+            {result.pendingGrind.count > 0 && (
+              <p className="mb-3 rounded-xl border-[3px] border-dk-outline bg-dk-lantern px-3 py-1.5 text-center font-display text-base text-dk-outline" data-testid="grind-pending" data-count={result.pendingGrind.count}>
+                갈기 적용 대기 — 다음에 넣는 재료 {result.pendingGrind.count}개의 방향이 뒤집히고 독성은 0이에요
+              </p>
+            )}
             <ul className="grid grid-cols-2 gap-3" data-tutorial-target="kitchen-methods">
               {methods.map((m) => {
-                const usedAlready = result.usedMethods.includes(m.code);
+                const owned = !m.tool || tools[m.code] !== undefined;
+                if (!owned) {
+                  const src = toolSources[m.code];
+                  return (
+                    <li key={m.code}>
+                      <div
+                        className="flex h-full w-full flex-col items-center justify-center gap-0 rounded-xl border-[3px] border-dashed border-dk-outline/50 bg-dk-paper-area/60 px-2 py-1.5 text-center opacity-80"
+                        data-testid="kitchen-method-locked" data-method={m.code}
+                      >
+                        <span className="font-display text-lg leading-6 text-dk-stone [filter:grayscale(1)]">🔒 {m.name}</span>
+                        <span className="font-body text-[11px] leading-tight text-dk-text-sub">
+                          {src ? `${src.floorNo}층 장인에게서 얻을 수 있어요` : "장인에게서 얻을 수 있어요"}
+                        </span>
+                      </div>
+                    </li>
+                  );
+                }
+                const level = methodLevel(m);
+                const max = methodMaxUses(m, level);
+                const uses = result.methodUses[m.code] ?? 0;
+                const blocked = methodBlocked(m);
+                const picking = sizePicker === m.code;
                 return (
-                  <li key={m.code}>
+                  <li key={m.code} className={cn(picking && "col-span-2")}>
                     <ChunkyButton
                       variant="paper"
                       size="sm"
-                      disabled={usedAlready}
-                      onClick={() => addMethod(m.code)}
+                      disabled={!!blocked}
+                      onClick={() => pressMethod(m)}
+                      onMouseEnter={() => setHoverMethod({ code: m.code })}
+                      onMouseLeave={() => setHoverMethod(null)}
+                      onFocus={() => setHoverMethod({ code: m.code })}
+                      onBlur={() => setHoverMethod(null)}
                       data-testid="kitchen-method"
                       data-method={m.code}
-                      className="h-auto w-full flex-col gap-0 py-1.5"
+                      data-uses={uses}
+                      data-blocked={blocked ?? undefined}
+                      className={cn("h-auto w-full flex-col gap-0 py-1.5", m.tool && "border-dk-crystal")}
                     >
-                      <span className="text-lg leading-6">{m.name}{usedAlready && " ✓"}</span>
-                      <span className="font-body text-[11px] leading-tight text-dk-text-sub">{m.description}</span>
+                      <span className="text-lg leading-6">{m.name}{max > 1 ? ` ${uses}/${max}` : uses > 0 ? " ✓" : ""}</span>
+                      <span className="font-body text-[11px] leading-tight text-dk-text-sub">
+                        {blocked === "no_ingredient" ? "재료를 먼저 넣어요" : blocked === "no_slot" ? "다음 재료 자리가 없어요" : m.kind === "invert_next" ? `다음 재료 ${methodNextCount(m, level)}개의 방향 반전, 독성 0` : m.description}
+                      </span>
                     </ChunkyButton>
+                    {picking && m.sizes && (
+                      <div className="mt-2 flex gap-2 rounded-xl border-[3px] border-dk-outline bg-dk-paper p-2" data-testid="size-picker" role="group" aria-label={`${m.name} 효과 크기`}>
+                        {m.sizes.map((v, idx) => (
+                          <ChunkyButton
+                            key={idx}
+                            size="sm"
+                            variant={idx === 1 ? "primary" : "wood"}
+                            className="h-auto flex-1 flex-col gap-0 py-1"
+                            onClick={() => addMethod(m.code, idx)}
+                            onMouseEnter={() => setHoverMethod({ code: m.code, size: idx })}
+                            onMouseLeave={() => setHoverMethod({ code: m.code })}
+                            data-testid={`kitchen-size-${idx}`}
+                          >
+                            <span className="text-base leading-5">{SIZE_NAMES[idx] ?? idx}</span>
+                            <span className="font-body text-[11px] leading-tight">{sizeLabel(m.kind, v)}</span>
+                          </ChunkyButton>
+                        ))}
+                      </div>
+                    )}
                   </li>
                 );
               })}
@@ -330,7 +436,7 @@ export function KitchenBoard({
           </p>
           <p className="text-sm text-dk-text-sub">
             재료 {result.ingredientCount}/{config.maxIngredients}
-            {result.aging && ` · 절이기를 쓰면 ${agingMinutes}분 숙성한 뒤 수령해요`}
+            {result.aging && ` · 숙성이 필요해요: ${Math.max(1, Math.round(result.agingSeconds / 60))}분 뒤에 수령할 수 있어요`}
           </p>
           {serverError && <p role="alert" className="text-sm text-dk-red">{serverError}</p>}
         </div>
@@ -359,12 +465,12 @@ export function KitchenBoard({
           }}
         />
       )}
-      {revealed?.dish && <DishReveal state={revealed} agingMinutes={agingMinutes} onClose={() => setRevealed(null)} />}
+      {revealed?.dish && <DishReveal state={revealed} onClose={() => setRevealed(null)} />}
     </div>
   );
 }
 
-function DishReveal({ state, agingMinutes, onClose }: { state: CookState; agingMinutes: number; onClose: () => void }) {
+function DishReveal({ state, onClose }: { state: CookState; onClose: () => void }) {
   const dish = state.dish!;
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-dk-shadow/70 p-4" role="dialog" aria-modal="true" aria-label="완성된 요리" data-testid="dish-reveal">
@@ -386,7 +492,7 @@ function DishReveal({ state, agingMinutes, onClose }: { state: CookState; agingM
             <p className="text-sm text-dk-text-sub">{dish.effectDesc}</p>
           </div>
           <p className="text-sm" data-testid="dish-destination">
-            {dish.aging ? `숙성 중이에요. ${agingMinutes}분 뒤에 창고에서 수령할 수 있어요.` : "창고에 보관했어요."}
+            {dish.aging ? `숙성 중이에요. ${Math.max(1, Math.round(dish.agingSeconds / 60))}분 뒤에 창고에서 수령할 수 있어요.` : "창고에 보관했어요."}
           </p>
         </PaperCard>
         <div className="mt-5 flex flex-wrap justify-center gap-3">

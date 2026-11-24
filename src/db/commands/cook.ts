@@ -2,7 +2,7 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { simulateCooking, type CookingProblem, type CookingStep, type Quality } from "../../lib/game/cooking";
 import type { Database } from "../index";
 import { ingredients as ingredientsTable, profiles, recipeDiscoveries, userDishes, userIngredients } from "../schema";
-import { loadCookingIngredients, loadCookingMaster } from "./cooking-data";
+import { loadCookingIngredients, loadCookingMaster, loadUserTools } from "./cooking-data";
 import { onCooked } from "./tutorial";
 
 export const MAX_STEPS = 12; // 재료 4 + 조리법 4 에 여유를 둔 상한 (비정상 입력 차단)
@@ -17,6 +17,8 @@ export type CookedDish = {
   effectName: string;
   effectDesc: string;
   aging: boolean;
+  /** 숙성 시간(초): 숙성하는 조리법 중 가장 긴 쪽 */
+  agingSeconds: number;
   readyAtMs: number;
 };
 export type CookResult = { ok: true; dish: CookedDish; firstDiscovery: boolean } | { ok: false; reason: CookFailure };
@@ -59,7 +61,9 @@ export function parseSteps(input: unknown): CookingStep[] | null {
     if (r.type === "ingredient" && typeof r.id === "number" && Number.isInteger(r.id) && r.id > 0) {
       steps.push({ type: "ingredient", id: r.id });
     } else if (r.type === "method" && typeof r.code === "string" && /^[a-z_]{1,32}$/.test(r.code)) {
-      steps.push({ type: "method", code: r.code });
+      if (r.size === undefined) steps.push({ type: "method", code: r.code });
+      else if (typeof r.size === "number" && Number.isInteger(r.size) && r.size >= 0 && r.size <= 2) steps.push({ type: "method", code: r.code, size: r.size });
+      else return null;
     } else return null;
   }
   return steps;
@@ -80,12 +84,14 @@ export async function cookDish(db: Database, input: { userId: string; steps: unk
       const [prof] = await tx.select({ unlocked: profiles.unlockedFloor }).from(profiles).where(eq(profiles.id, input.userId));
       const { config, methods } = await loadCookingMaster(tx, prof?.unlocked ?? 1);
 
+      const tools = await loadUserTools(tx, input.userId); // 가진 도구·강화 단계 (없는 도구의 조리법은 simulateCooking 이 거부한다)
+
       const consumed = await consumeIngredients(tx, input.userId, steps);
       if (!consumed) throw new Abort("insufficient_ingredients");
       const need = consumed;
 
       const ings = await loadCookingIngredients(tx, [...need.keys()]);
-      const sim = simulateCooking(steps, ings, methods, config);
+      const sim = simulateCooking(steps, ings, methods, config, tools);
       if (!sim.canFinish || !sim.zone || !sim.quality || !sim.name || sim.mainIngredientId == null) {
         throw new Abort(sim.problems[0] ?? "outside_zone");
       }
@@ -100,7 +106,7 @@ export async function cookDish(db: Database, input: { userId: string; steps: unk
       let ingredientCost = 0;
       for (const [id, n] of need) ingredientCost += (priceById.get(id) ?? 0) * n;
 
-      const readyAt = new Date(input.now.getTime() + (sim.aging ? config.agingSeconds * 1000 : 0));
+      const readyAt = new Date(input.now.getTime() + sim.agingSeconds * 1000); // 숙성하는 조리법을 함께 쓰면 가장 긴 쪽만
       const [dish] = await tx
         .insert(userDishes)
         .values({
@@ -139,7 +145,7 @@ export async function cookDish(db: Database, input: { userId: string; steps: unk
         firstDiscovery: !!disc?.inserted,
         dish: {
           id: dish.id, name: sim.name, quality: sim.quality, zoneCode: zone.code, zoneName: zone.name,
-          effectName: zone.effectName, effectDesc: zone.effectDesc, aging: sim.aging, readyAtMs: readyAt.getTime(),
+          effectName: zone.effectName, effectDesc: zone.effectDesc, aging: sim.aging, agingSeconds: sim.agingSeconds, readyAtMs: readyAt.getTime(),
         },
       };
     });

@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { canMoveTo } from "../../lib/game/floors";
 import type { Database } from "../index";
 import { dungeonFloors, profiles, salesSessions, shops } from "../schema";
+import { recordFloorVisit } from "./artisans";
 import { settleInTx } from "./sales";
 
 export type MoveFailure = "unknown_floor" | "same_floor" | "locked" | "session_open" | "insufficient_gold" | "no_shop" | "stale";
@@ -64,6 +65,7 @@ export async function moveToFloor(db: Database, input: { userId: string; floorNo
         .where(and(eq(shops.id, shop.id), eq(shops.ownerId, input.userId), eq(shops.floorId, shop.floorId)))
         .returning({ id: shops.id });
       if (!moved) throw new Abort("stale");
+      await recordFloorVisit(tx, input.userId, floorNo); // 처음 가 보는 층이면 그 층의 장인이 등장한다
       return { ok: true as const, floorNo, cost: check.cost, gold };
     });
   } catch (err) {

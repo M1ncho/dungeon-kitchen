@@ -5,7 +5,7 @@ import { distanceBetween, judgeOrder } from "../../lib/game/orders";
 import { basePriceOf } from "../../lib/game/sales";
 import type { Database } from "../index";
 import {
-  customerTypes, dishZones, dungeonFloors, ingredients, profiles, sessionDisplays, shops, specialOrders, userDishes, userIngredients,
+  customerTypes, dishZones, dungeonFloors, ingredients, profiles, sessionDisplays, shops, specialOrders, userArtisans, userDishes, userIngredients,
 } from "../schema";
 import { loadCookingIngredients, loadCookingMaster } from "./cooking-data";
 import { askHint, getServeCandidates, getWaitingOrderView, serveCustom, serveWithDish } from "./orders";
@@ -248,6 +248,28 @@ describe.skipIf(!enabled)("주문 손님 (통합)", () => {
     expect((await dishOf(u)).filter((d) => d.name !== "임시 수프")).toHaveLength(0); // 요리는 저장되지 않는다
     // 기록: 응대 방식, 거리, 등급, 골드, 평판, 낸 요리 좌표
     expect(await orderRow(o.id)).toMatchObject({ mode: "custom", grade: "great", status: "served", distance: expected.distance, dishX: sim.position.x, dishY: sim.position.y });
+  });
+
+  it("맞춤 요리(주문·승급 시험과 같은 경로): 도구가 없는 조리법은 거부(롤백)되고, 도구가 있으면 서버가 같은 계산(훈연 회전)으로 판정한다", async () => {
+    const u = await newUser({ stock: { dungeon_mushroom: 3, salt: 3 } });
+    const sid = await openSession(u);
+    const o = await makeOrder(u, sid, { targetX: 0, targetY: 30 });
+    const steps: CookingStep[] = [
+      { type: "ingredient", id: ingId.get("dungeon_mushroom")! }, { type: "ingredient", id: ingId.get("salt")! }, { type: "method", code: "smoke" },
+    ];
+    // 도구 없음: 전체 롤백 (재료도 그대로, 주문도 대기 상태 그대로)
+    expect(await serveCustom(db, { userId: u, orderId: o.id, steps, now: at(2) })).toEqual({ ok: false, reason: "tool_missing" });
+    expect(await stock(u, "dungeon_mushroom")).toBe(3);
+    expect((await orderRow(o.id)).status).toBe("waiting");
+    // 훈연기를 받으면 같은 단계가 통과하고, 낸 요리 좌표는 주방과 같은 계산(simulateCooking + 도구 단계)이다
+    await db.insert(userArtisans).values({ userId: u, artisanCode: "turgan", toolLevel: 0, deliveredAt: at(0) });
+    const { config, methods } = await loadCookingMaster(db, 1);
+    const ings = await loadCookingIngredients(db, [ingId.get("dungeon_mushroom")!, ingId.get("salt")!]);
+    const sim = simulateCooking(steps, ings, methods, config, { smoke: 0 });
+    const r = await serveCustom(db, { userId: u, orderId: o.id, steps, now: at(3) });
+    expect(r.ok && r.result.dish).toMatchObject({ x: sim.position.x, y: sim.position.y, toxin: sim.toxin });
+    expect(sim.position.x).toBeGreaterThan(10); // 훈연으로 시계 방향 30° 회전: (0,30) → (15, 26) 쪽
+    expect(await stock(u, "dungeon_mushroom")).toBe(2);
   });
 
   it("맞춤 요리: 구역 밖에서도 낼 수 있고, 크게 빗나가면 0G·평판 −2 이며 재료는 소모된다", async () => {
