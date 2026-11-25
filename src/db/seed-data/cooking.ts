@@ -18,6 +18,12 @@ export const COOKING_SETTINGS = {
   agingSeconds: 600, // 절이기 숙성 시간(초)
   perfectRatio: 0.35, // 구역 중심 거리 / 반지름 이하면 완벽
   goodRatio: 0.7, // 이하면 좋음, 그 외 보통
+  // 화구 칸: 요리 하나에 쓸 수 있는 조리법 총 횟수 (종류 무관). 고정 규칙이라 능력치·강화·아이템으로 늘리지 않는다.
+  maxMethodUses: 3,
+  // 같은 조리법을 두 번째로 쓸 때의 효과 비율 (1/10000): 이동량·당김·회전 각도는 이 비율, 확대는 배율 증가분이 이 비율
+  secondUseBp: 3300,
+  // 갈기가 한 요리에서 영향을 주는 재료 총수 상한 (여러 번 써도 합쳐서)
+  grindMaxAffected: 2,
 } as const;
 
 // 조리법. kind 별 의미는 src/lib/game/cooking.ts 의 MethodKind 주석을 본다.
@@ -27,15 +33,19 @@ export type MethodSeed = {
   code: string; name: string; dx: number; dy: number; pullBp: number; toxinDelta: number; aging: boolean; sortOrder: number; description: string;
   agingSeconds: number | null; kind: "shift" | "scale" | "rotate" | "invert_next" | "pull_zone"; param: number; zeroToxin: boolean; tool: boolean;
   usesByLevel: number[]; sizes: number[] | null; nextCountByLevel: number[] | null;
+  sizeToxin: number[] | null; secondToxinDelta: number | null; agingByLevel: (number | null)[] | null;
 };
-const base: Pick<MethodSeed, "agingSeconds" | "kind" | "param" | "zeroToxin" | "tool" | "usesByLevel" | "sizes" | "nextCountByLevel"> = {
+const base: Pick<MethodSeed, "agingSeconds" | "kind" | "param" | "zeroToxin" | "tool" | "usesByLevel" | "sizes" | "nextCountByLevel" | "sizeToxin" | "secondToxinDelta" | "agingByLevel"> = {
   agingSeconds: null, kind: "shift", param: 0, zeroToxin: false, tool: false, usesByLevel: [1, 1, 1], sizes: null, nextCountByLevel: null,
+  sizeToxin: null, secondToxinDelta: null, agingByLevel: null,
 };
+// 기본 조리법도 1층 장인 고니의 도구로 강화한다 (artisans.ts). 1단계: 같은 요리에 2회, 2단계: 쓸 때마다 약·보통·강 선택.
+// shift 의 sizes 는 이동량 배율, 끓이기는 중심 당김 비율.
 export const METHODS: MethodSeed[] = [
-  { ...base, code: "grill", name: "굽기", dx: 15, dy: 8, pullBp: 0, toxinDelta: 0, aging: false, sortOrder: 1, description: "열기 +15, 감칠맛 +8" },
-  { ...base, code: "boil", name: "끓이기", dx: 0, dy: 0, pullBp: 1500, toxinDelta: -3, aging: false, sortOrder: 2, description: "중심 쪽으로 15% 당김, 독성 −3" },
-  { ...base, code: "fry", name: "튀기기", dx: 0, dy: 16, pullBp: 0, toxinDelta: 1, aging: false, sortOrder: 3, description: "감칠맛 +16, 독성 +1" },
-  { ...base, code: "pickle", name: "절이기", dx: -12, dy: -6, pullBp: 0, toxinDelta: 0, aging: true, agingSeconds: 600, sortOrder: 4, description: "단맛 +12, 마력 +6 (숙성 후 수령)" },
+  { ...base, code: "grill", name: "굽기", dx: 15, dy: 8, pullBp: 0, toxinDelta: 0, aging: false, sortOrder: 1, usesByLevel: [1, 2, 2], sizes: [0.8, 1, 1.2], description: "열기 +15, 감칠맛 +8" },
+  { ...base, code: "boil", name: "끓이기", dx: 0, dy: 0, pullBp: 1500, toxinDelta: -3, aging: false, sortOrder: 2, usesByLevel: [1, 2, 2], sizes: [0.12, 0.15, 0.18], sizeToxin: [-2, -3, -4], secondToxinDelta: 0, description: "중심 쪽으로 15% 당김, 독성 −3" },
+  { ...base, code: "fry", name: "튀기기", dx: 0, dy: 16, pullBp: 0, toxinDelta: 1, aging: false, sortOrder: 3, usesByLevel: [1, 2, 2], sizes: [0.8, 1, 1.2], sizeToxin: [0, 1, 1], description: "감칠맛 +16, 독성 +1" },
+  { ...base, code: "pickle", name: "절이기", dx: -12, dy: -6, pullBp: 0, toxinDelta: 0, aging: true, agingSeconds: 600, agingByLevel: [600, 600, 420], sortOrder: 4, usesByLevel: [1, 2, 2], sizes: [0.8, 1, 1.2], description: "단맛 +12, 마력 +6 (숙성 후 수령)" },
   // ── 장인의 도구 ──
   { ...base, code: "ferment", name: "발효", dx: 0, dy: 0, pullBp: 0, toxinDelta: 1, aging: true, agingSeconds: 1200, sortOrder: 5, kind: "scale", param: 1.3, tool: true, usesByLevel: [1, 2, 2], sizes: [1.15, 1.3, 1.45],
     description: "위치를 중심에서 1.3배 멀리, 독성 +1 (숙성 후 수령)" },

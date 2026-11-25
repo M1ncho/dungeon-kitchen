@@ -27,7 +27,7 @@ export async function getNavData(userId: string): Promise<NavData> {
   ]);
   const badges: NavData["badges"] = {};
   if (exam) badges.HOME = { text: "시험 손님", tone: "alert" };
-  else if (artisan && (artisan.unseen || artisan.state === "request")) badges.HOME = { text: "장인", tone: "lantern" }; // 새로 만난 장인 / 부탁 대기
+  else if (artisan.current && (artisan.current.unseen || artisan.current.state === "request")) badges.HOME = { text: "장인", tone: "lantern" }; // 새로 만난 장인 / 부탁 대기
   if (newReviews > 0) badges.GDE = { text: "새 평", tone: "lantern" };
   if (board.ready > 0) badges.REQ = { text: `완료 ${board.ready}`, tone: "lantern" };
   if (sales.waitingOrder) badges.STL = { text: "주문 손님", tone: "alert" };

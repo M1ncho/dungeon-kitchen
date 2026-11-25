@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARTISANS } from "../../db/seed-data/artisans";
+import { ARTISANS, artisanTools } from "../../db/seed-data/artisans";
 import { INGREDIENT_FLOORS } from "../../db/seed-data/ingredients";
 import { ZONES } from "../../db/seed-data/cooking";
 import { applyMethod, methodMaxUses, nearestZone, previewMethod, simulateCooking, type CookingMethod } from "./cooking";
@@ -154,28 +154,55 @@ describe("공통 규칙", () => {
 
 describe("장인 시드 데이터", () => {
   const ingCodes = new Set(seedIngredients.map((i) => i.code));
-  it("장인은 층마다 한 명, 도구 조리법과 일대일이다", () => {
-    expect(ARTISANS.map((a) => a.floorNo).sort()).toEqual([2, 3, 4, 5]);
-    expect(new Set(ARTISANS.map((a) => a.methodCode)).size).toBe(4);
-    for (const a of ARTISANS) expect(toolMethods.some((m: CookingMethod) => m.code === a.methodCode)).toBe(true);
+  const withRequest = ARTISANS.filter((a) => a.requestZoneCode !== null);
+  it("장인은 층마다 한 명이고, 부탁이 있는 장인(2~5층)은 도구 조리법과 일대일이다", () => {
+    expect(ARTISANS.map((a) => a.floorNo).sort()).toEqual([1, 2, 3, 4, 5]);
+    expect(withRequest.map((a) => a.floorNo).sort()).toEqual([2, 3, 4, 5]);
+    expect(new Set(withRequest.map((a) => a.methodCode)).size).toBe(4);
+    for (const a of withRequest) expect(toolMethods.some((m: CookingMethod) => m.code === a.methodCode)).toBe(true);
+  });
+  it("조리법 하나는 도구 하나다 (모든 조리법이 어느 장인의 도구에 한 번씩)", () => {
+    const codes = ARTISANS.flatMap((a) => artisanTools(a).map((t) => t.methodCode));
+    expect(new Set(codes).size).toBe(codes.length);
+    expect([...codes].sort()).toEqual(allSeedMethods.map((m) => m.code).sort());
   });
   it("부탁은 그 층에서 해금된 구역이고, 요구 품질은 1~3이다", () => {
-    for (const a of ARTISANS) {
+    for (const a of withRequest) {
       const z = ZONES.find((x) => x.code === a.requestZoneCode)!;
       expect(z.unlockFloor).toBeLessThanOrEqual(a.floorNo);
-      expect(a.requestMinQuality).toBeGreaterThanOrEqual(1);
-      expect(a.requestMinQuality).toBeLessThanOrEqual(3);
+      expect(a.requestMinQuality!).toBeGreaterThanOrEqual(1);
+      expect(a.requestMinQuality!).toBeLessThanOrEqual(3);
     }
     expect(ARTISANS.find((a) => a.floorNo === 3)!.requestMinQuality).toBe(1); // 3층 용암 구이는 ★1 이상
   });
   it("강화 비용의 재료는 실제 재료이고 그 층까지 해금된 것이다 (2단계 비용이 1단계 이상)", () => {
-    for (const a of ARTISANS) {
+    for (const a of withRequest) {
       expect(a.upgrades).toHaveLength(2);
       expect(a.upgrades[1].gold).toBeGreaterThan(a.upgrades[0].gold);
       expect(a.upgradeTexts).toHaveLength(2);
       for (const up of a.upgrades) for (const it of up.items) {
         expect(ingCodes.has(it.ingredient)).toBe(true);
         expect(INGREDIENT_FLOORS[it.ingredient]).toBeLessThanOrEqual(a.floorNo);
+      }
+    }
+  });
+  it("1층 고니는 부탁이 없고 기본 조리법 4개를 맡는다: 1단계는 1~2층 재료, 2단계는 3층 이상 재료", () => {
+    const gony = ARTISANS.find((a) => a.code === "gony")!;
+    expect(gony.requestZoneCode).toBeNull();
+    const tools = artisanTools(gony);
+    expect(tools.map((t) => t.methodCode).sort()).toEqual(["boil", "fry", "grill", "pickle"]);
+    expect(tools.map((t) => t.toolName).sort()).toEqual(["무쇠 솥", "절임 독", "튀김 냄비", "화덕"].sort());
+    for (const t of tools) {
+      expect(t.upgrades).toHaveLength(2);
+      expect(t.upgradeTexts).toHaveLength(2);
+      expect(t.upgrades[1].gold).toBeGreaterThan(t.upgrades[0].gold);
+      for (const it of t.upgrades[0].items) {
+        expect(ingCodes.has(it.ingredient)).toBe(true);
+        expect(INGREDIENT_FLOORS[it.ingredient]).toBeLessThanOrEqual(2);
+      }
+      for (const it of t.upgrades[1].items) {
+        expect(ingCodes.has(it.ingredient)).toBe(true);
+        expect(INGREDIENT_FLOORS[it.ingredient]).toBeGreaterThanOrEqual(3);
       }
     }
   });

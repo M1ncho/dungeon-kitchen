@@ -25,6 +25,9 @@ export const cookingSettings = pgTable(
     agingSeconds: integer("aging_seconds").notNull(), // 절이기 숙성 시간
     perfectRatio: doublePrecision("perfect_ratio").notNull(), // 중심거리/반지름 이하면 완벽
     goodRatio: doublePrecision("good_ratio").notNull(), // 이하면 좋음
+    maxMethodUses: smallint("max_method_uses").notNull().default(3), // 화구 칸: 요리 하나에 쓸 수 있는 조리법 총 횟수 (고정)
+    secondUseBp: integer("second_use_bp").notNull().default(3300), // 같은 조리법 2회째 효과 비율 (1/10000)
+    grindMaxAffected: smallint("grind_max_affected").notNull().default(2), // 갈기가 한 요리에서 영향을 주는 재료 총수 상한
   },
   (t) => [
     check("cooking_settings_singleton_check", sql`${t.id} = 1`),
@@ -57,6 +60,9 @@ export const cookingMethods = pgTable(
     usesByLevel: jsonb("uses_by_level").$type<number[]>().notNull().default([1, 1, 1]),
     sizes: jsonb("sizes").$type<number[] | null>(),
     nextCountByLevel: jsonb("next_count_by_level").$type<number[] | null>(),
+    sizeToxin: jsonb("size_toxin").$type<number[] | null>(), // 2단계 크기(약·보통·강)별 독성 증감
+    secondToxinDelta: smallint("second_toxin_delta"), // 2회째 사용의 독성 증감 (null 이면 toxin_delta)
+    agingByLevel: jsonb("aging_by_level").$type<(number | null)[] | null>(), // 강화 단계별 숙성 시간(초)
   },
   (t) => [check("cooking_methods_pull_check", sql`${t.pullBp} between 0 and 10000`)],
 );

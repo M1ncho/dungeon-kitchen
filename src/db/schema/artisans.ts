@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, jsonb, pgTable, primaryKey, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { check, index, jsonb, pgTable, primaryKey, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { profiles } from "./players";
 
 // ───── 층별 장인 마스터 데이터 (시드로 관리, 앱에서는 읽기 전용) ─────
@@ -15,8 +15,8 @@ export const artisans = pgTable(
     title: text("title").notNull(),
     toolName: text("tool_name").notNull(),
     methodCode: text("method_code").notNull(), // 도구가 열어 주는 조리법 (cooking_methods.code)
-    requestZoneCode: text("request_zone_code").notNull(), // 부탁: 이 구역의 요리
-    requestMinQuality: smallint("request_min_quality").notNull(), // 이 품질 이상
+    requestZoneCode: text("request_zone_code"), // 부탁: 이 구역의 요리. null 이면 부탁이 없다 (1층 고니: 기본 도구를 이미 가진 것으로 보고 강화만 맡는다)
+    requestMinQuality: smallint("request_min_quality"), // 이 품질 이상
     requestCount: smallint("request_count").notNull().default(1),
     greeting: text("greeting").notNull(), // 처음 등장할 때 대사
     requestText: text("request_text").notNull(), // 부탁 문장
@@ -27,6 +27,21 @@ export const artisans = pgTable(
     upgrades: jsonb("upgrades").$type<ArtisanUpgrade[]>().notNull(), // 강화 비용 (1단계, 2단계): 골드 + 재료
   },
   (t) => [check("artisans_quality_check", sql`${t.requestMinQuality} between 1 and 3 and ${t.requestCount} >= 1`)],
+);
+
+// 장인이 다루는 도구 (장인 1명이 여러 도구를 가질 수 있다: 1층 고니는 기본 조리법 4개).
+// artisans 의 method_code / tool_name / upgrade_texts / upgrades 는 도구가 하나이던 때의 컬럼이라 대표 도구 값만 남겨 둔다 (읽는 곳은 이 테이블).
+export const artisanTools = pgTable(
+  "artisan_tools",
+  {
+    methodCode: text("method_code").primaryKey(), // 도구가 열거나 강화하는 조리법 (cooking_methods.code). 조리법 하나는 도구 하나
+    artisanCode: text("artisan_code").notNull().references(() => artisans.code, { onDelete: "cascade" }),
+    toolName: text("tool_name").notNull(),
+    sortOrder: smallint("sort_order").notNull().default(0),
+    upgradeTexts: jsonb("upgrade_texts").$type<string[]>().notNull(), // 강화 단계별 대사
+    upgrades: jsonb("upgrades").$type<ArtisanUpgrade[]>().notNull(), // 강화 비용 (1단계, 2단계): 골드 + 재료
+  },
+  (t) => [index("artisan_tools_artisan_idx").on(t.artisanCode)],
 );
 
 // ───── 유저 데이터 ─────
@@ -57,5 +72,19 @@ export const userArtisans = pgTable(
   (t) => [
     primaryKey({ columns: [t.userId, t.artisanCode] }),
     check("user_artisans_level_check", sql`${t.toolLevel} is null or ${t.toolLevel} between 0 and 2`),
+  ],
+);
+
+// 유저 × 도구: 강화 단계 (0 = 처음 얻음/기본, 1·2 = 강화). 행이 없으면 기본 조리법은 0단계, 장인의 도구는 아직 없는 것.
+export const userToolLevels = pgTable(
+  "user_tool_levels",
+  {
+    userId: uuid("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+    methodCode: text("method_code").notNull(),
+    level: smallint("level").notNull().default(0),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.methodCode] }),
+    check("user_tool_levels_level_check", sql`${t.level} between 0 and 2`),
   ],
 );

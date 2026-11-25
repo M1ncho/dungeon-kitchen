@@ -29,9 +29,9 @@ export async function deliverToArtisan(artisanCode: string, dishId: string): Pro
 }
 
 /** 도구 강화: 비용(골드·재료)과 단계는 서버가 정한다. */
-export async function upgradeArtisanTool(artisanCode: string): Promise<ArtisanState> {
+export async function upgradeArtisanTool(artisanCode: string, methodCode?: string): Promise<ArtisanState> {
   const user = await requireUser();
-  const r = await upgradeTool(db, { userId: user.id, artisanCode });
+  const r = await upgradeTool(db, { userId: user.id, artisanCode, methodCode });
   refresh();
   return r.ok ? { ok: "upgraded", level: r.level } : { error: MESSAGES[r.reason] };
 }

@@ -1,6 +1,6 @@
 import { and, eq, gte, isNotNull, isNull, sql } from "drizzle-orm";
 import type { Database } from "../index";
-import { artisans, dishZones, ingredients, profiles, userArtisans, userDishes, userIngredients, visitedFloors } from "../schema";
+import { artisanTools, artisans, dishZones, ingredients, profiles, userArtisans, userDishes, userIngredients, userToolLevels, visitedFloors } from "../schema";
 
 // 층별 장인: 등장(가 본 층), 부탁 납품(도구 획득), 도구 강화. 모든 상태 전이는 조건부 update 로 한 번만 일어난다.
 
@@ -16,13 +16,19 @@ class Abort extends Error {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CODE = /^[a-z_]{1,32}$/;
 
-/** 이 유저가 가 본 층에 장인이 있으면 등장시킨다 (없을 때만 insert, 여러 번 불려도 한 번만). 백그라운드 작업 없이 접속 시점에 지연 실행. */
+/**
+ * 이 유저가 가 본 층에 장인이 있으면 등장시킨다 (없을 때만 insert, 여러 번 불려도 한 번만). 백그라운드 작업 없이 접속 시점에 지연 실행.
+ * 부탁이 없는 장인(1층 고니, request_zone_code 가 null)은 가 본 층과 상관없이 모두에게 등장하고 도구는 이미 가진 것(0단계)으로 본다.
+ */
 export async function ensureArtisans(db: Pick<Database, "execute">, userId: string): Promise<void> {
   await db.execute(sql`
-    insert into user_artisans (user_id, artisan_code)
-    select ${userId}::uuid, a.code
+    insert into user_artisans (user_id, artisan_code, delivered_at, tool_level)
+    select ${userId}::uuid, a.code,
+           case when a.request_zone_code is null then now() end,
+           case when a.request_zone_code is null then 0 end
     from artisans a
-    join visited_floors v on v.floor_no = a.floor_no and v.user_id = ${userId}::uuid
+    where a.request_zone_code is null
+       or exists (select 1 from visited_floors v where v.floor_no = a.floor_no and v.user_id = ${userId}::uuid)
     on conflict do nothing`);
 }
 
@@ -49,20 +55,22 @@ export async function deliverRequest(db: Database, input: { userId: string; arti
     return await db.transaction(async (tx) => {
       const [row] = await tx
         .select({
-          toolName: artisans.toolName, methodCode: artisans.methodCode, zoneCode: artisans.requestZoneCode,
-          minQuality: artisans.requestMinQuality, count: artisans.requestCount, toolLevel: userArtisans.toolLevel,
+          zoneCode: artisans.requestZoneCode, minQuality: artisans.requestMinQuality, count: artisans.requestCount, toolLevel: userArtisans.toolLevel,
         })
         .from(userArtisans)
         .innerJoin(artisans, eq(artisans.code, userArtisans.artisanCode))
         .where(and(eq(userArtisans.userId, input.userId), eq(userArtisans.artisanCode, code)));
       if (!row) throw new Abort("not_found"); // 아직 등장하지 않은 장인
-      if (row.toolLevel !== null) throw new Abort("already_delivered");
-      const [zone] = await tx.select({ id: dishZones.id }).from(dishZones).where(eq(dishZones.code, row.zoneCode));
+      if (row.toolLevel !== null || row.zoneCode === null || row.minQuality === null) throw new Abort("already_delivered"); // 부탁이 없는 장인은 납품할 것이 없다
+      const tools = await tx.select({ methodCode: artisanTools.methodCode, toolName: artisanTools.toolName }).from(artisanTools).where(eq(artisanTools.artisanCode, code)).orderBy(artisanTools.sortOrder);
+      if (tools.length === 0) throw new Abort("not_found");
+      const minQuality = row.minQuality;
+      const [zone] = await tx.select({ id: dishZones.id }).from(dishZones).where(eq(dishZones.code, row.zoneCode!));
       if (!zone) throw new Abort("dish_mismatch");
 
       const eligible = and(
         eq(userDishes.userId, input.userId), isNotNull(userDishes.collectedAt), isNull(userDishes.displayId), isNull(userDishes.soldAt),
-        eq(userDishes.zoneId, zone.id), gte(userDishes.quality, row.minQuality),
+        eq(userDishes.zoneId, zone.id), gte(userDishes.quality, minQuality),
       );
       const [first] = await tx.update(userDishes).set({ soldAt: input.now }).where(and(eq(userDishes.id, dishId), eligible)).returning({ id: userDishes.id });
       if (!first) throw new Abort("dish_mismatch");
@@ -71,7 +79,7 @@ export async function deliverRequest(db: Database, input: { userId: string; arti
         const more = await tx
           .update(userDishes)
           .set({ soldAt: input.now })
-          .where(and(eligible, sql`${userDishes.id} in (select id from user_dishes d2 where d2.user_id = ${input.userId}::uuid and d2.collected_at is not null and d2.display_id is null and d2.sold_at is null and d2.zone_id = ${zone.id} and d2.quality >= ${row.minQuality} and d2.id <> ${dishId}::uuid limit ${row.count - 1})`))
+          .where(and(eligible, sql`${userDishes.id} in (select id from user_dishes d2 where d2.user_id = ${input.userId}::uuid and d2.collected_at is not null and d2.display_id is null and d2.sold_at is null and d2.zone_id = ${zone.id} and d2.quality >= ${minQuality} and d2.id <> ${dishId}::uuid limit ${row.count - 1})`))
           .returning({ id: userDishes.id });
         if (more.length < row.count - 1) throw new Abort("dish_mismatch");
       }
@@ -81,7 +89,9 @@ export async function deliverRequest(db: Database, input: { userId: string; arti
         .where(and(eq(userArtisans.userId, input.userId), eq(userArtisans.artisanCode, code), isNull(userArtisans.toolLevel)))
         .returning({ code: userArtisans.artisanCode });
       if (!got) throw new Abort("already_delivered");
-      return { ok: true as const, toolName: row.toolName, methodCode: row.methodCode };
+      // 도구(조리법)를 0단계로 가진다. 이미 있으면 그대로 (강화 단계를 덮어쓰지 않는다).
+      await tx.insert(userToolLevels).values(tools.map((t) => ({ userId: input.userId, methodCode: t.methodCode, level: 0 }))).onConflictDoNothing();
+      return { ok: true as const, toolName: tools[0].toolName, methodCode: tools[0].methodCode };
     });
   } catch (err) {
     if (err instanceof Abort) return { ok: false, reason: err.reason };
@@ -89,33 +99,53 @@ export async function deliverRequest(db: Database, input: { userId: string; arti
   }
 }
 
-export type UpgradeResult = { ok: true; level: number; toolName: string } | { ok: false; reason: ArtisanFailure };
+export type UpgradeResult = { ok: true; level: number; toolName: string; methodCode: string } | { ok: false; reason: ArtisanFailure };
 
 /**
  * 도구 강화: 골드와 재료를 내고 다음 단계로. 단계를 "현재 단계 조건"으로 선점하므로 같은 요청이 두 번 와도 한 번만 강화된다.
  * 골드·재료는 모두 조건부 차감이고, 하나라도 모자라면 전체 롤백된다 (단계도 오르지 않는다).
+ * 장인이 도구를 여럿 다루면(1층 고니) methodCode 로 어느 조리법인지 고른다. 도구가 하나뿐이면 생략할 수 있다.
+ * 단계는 user_tool_levels(조리법별)가 기준이고, 도구가 하나이던 때의 user_artisans.tool_level 도 함께 맞춘다 (배포 중 옛 코드가 읽는 값).
  */
-export async function upgradeTool(db: Database, input: { userId: string; artisanCode: unknown }): Promise<UpgradeResult> {
+export async function upgradeTool(db: Database, input: { userId: string; artisanCode: unknown; methodCode?: unknown }): Promise<UpgradeResult> {
   if (typeof input.artisanCode !== "string" || !CODE.test(input.artisanCode)) return { ok: false, reason: "bad_request" };
+  if (input.methodCode !== undefined && (typeof input.methodCode !== "string" || !CODE.test(input.methodCode))) return { ok: false, reason: "bad_request" };
   const code = input.artisanCode;
   try {
     return await db.transaction(async (tx) => {
       const [row] = await tx
-        .select({ toolName: artisans.toolName, upgrades: artisans.upgrades, level: userArtisans.toolLevel })
+        .select({ primaryMethod: artisans.methodCode, legacyLevel: userArtisans.toolLevel })
         .from(userArtisans)
         .innerJoin(artisans, eq(artisans.code, userArtisans.artisanCode))
         .where(and(eq(userArtisans.userId, input.userId), eq(userArtisans.artisanCode, code)));
       if (!row) throw new Abort("not_found");
-      if (row.level === null) throw new Abort("no_tool");
-      const cost = row.upgrades[row.level]; // 현재 0 단계면 1단계 비용
-      if (!cost || row.level >= 2) throw new Abort("max_level");
+      if (row.legacyLevel === null) throw new Abort("no_tool"); // 아직 부탁을 들어주지 않았다
+      const tools = await tx.select().from(artisanTools).where(eq(artisanTools.artisanCode, code));
+      const tool = input.methodCode === undefined ? (tools.length === 1 ? tools[0] : undefined) : tools.find((t) => t.methodCode === input.methodCode);
+      if (!tool) throw new Abort(input.methodCode === undefined ? "bad_request" : "not_found");
 
-      const [claimed] = await tx
-        .update(userArtisans)
-        .set({ toolLevel: row.level + 1 })
-        .where(and(eq(userArtisans.userId, input.userId), eq(userArtisans.artisanCode, code), eq(userArtisans.toolLevel, row.level)))
-        .returning({ level: userArtisans.toolLevel });
-      if (!claimed) throw new Abort("stale");
+      const [own] = await tx
+        .select({ level: userToolLevels.level })
+        .from(userToolLevels)
+        .where(and(eq(userToolLevels.userId, input.userId), eq(userToolLevels.methodCode, tool.methodCode)));
+      const isPrimary = tool.methodCode === row.primaryMethod;
+      const level = Math.max(own?.level ?? 0, isPrimary ? row.legacyLevel : 0); // 기본 조리법은 행이 없으면 0단계
+      const cost = level < 2 ? tool.upgrades[level] : undefined;
+      if (!cost) throw new Abort("max_level");
+
+      const claimed = own
+        ? await tx
+            .update(userToolLevels)
+            .set({ level: level + 1 })
+            .where(and(eq(userToolLevels.userId, input.userId), eq(userToolLevels.methodCode, tool.methodCode), eq(userToolLevels.level, own.level)))
+            .returning({ level: userToolLevels.level })
+        : await tx
+            .insert(userToolLevels)
+            .values({ userId: input.userId, methodCode: tool.methodCode, level: level + 1 })
+            .onConflictDoNothing()
+            .returning({ level: userToolLevels.level });
+      if (claimed.length === 0) throw new Abort("stale");
+      if (isPrimary) await tx.update(userArtisans).set({ toolLevel: level + 1 }).where(and(eq(userArtisans.userId, input.userId), eq(userArtisans.artisanCode, code)));
 
       const [paid] = await tx
         .update(profiles)
@@ -134,7 +164,7 @@ export async function upgradeTool(db: Database, input: { userId: string; artisan
           .returning({ id: userIngredients.ingredientId });
         if (!took) throw new Abort("insufficient_ingredients");
       }
-      return { ok: true as const, level: row.level + 1, toolName: row.toolName };
+      return { ok: true as const, level: level + 1, toolName: tool.toolName, methodCode: tool.methodCode };
     });
   } catch (err) {
     if (err instanceof Abort) return { ok: false, reason: err.reason };

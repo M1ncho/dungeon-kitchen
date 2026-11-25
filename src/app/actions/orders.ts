@@ -21,6 +21,7 @@ const MESSAGES: Record<OrderFailure, string> = {
   too_many_ingredients: "재료는 최대 4개까지 넣을 수 있습니다.",
   method_repeated: "같은 조리법은 정해진 횟수까지만 쓸 수 있습니다.",
   method_too_early: "조리법은 재료를 하나 이상 넣은 뒤에 쓸 수 있습니다.",
+  method_slots_full: "화구 세 칸을 모두 썼습니다. 조리법은 요리 하나에 총 3번까지 쓸 수 있습니다.",
   tool_missing: "아직 가지고 있지 않은 도구의 조리법입니다.",
   size_locked: "도구를 강화해야 효과 크기를 고를 수 있습니다.",
   toxin_too_high: "독성이 너무 높아 낼 수 없습니다.",

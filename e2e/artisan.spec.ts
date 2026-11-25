@@ -31,8 +31,8 @@ test("층별 장인: 2층 이동 → 장인 부탁 확인 → 요리 납품 → 
   // 2층을 해금만 했을 뿐 아직 가 보지 않았다 → 장인은 등장하지 않는다
   await page.goto("/");
   await expect(page.getByTestId("artisan-alert")).toHaveCount(0);
-  await page.goto("/artisan");
-  await expect(page.getByTestId("artisan-empty")).toBeVisible();
+  await page.goto("/artisan?a=molu"); // 몰루는 아직 만날 수 없다 → 1층 고니의 공방이 열린다 (부탁이 없는 장인은 언제나)
+  await expect(page.getByTestId("artisan-screen")).toHaveAttribute("data-artisan", "gony");
   expect(await readArtisan(nickname, "molu")).toBeNull();
 
   // ── 층 지도: 2층에서 얻는 도구가 "열리는 것"에 표시된다. 2층으로 이동 ──
@@ -54,7 +54,7 @@ test("층별 장인: 2층 이동 → 장인 부탁 확인 → 요리 납품 → 
   // ── 장인 화면: 부탁 카드 (납품할 요리가 없다) ──
   await page.goto("/");
   await page.getByTestId("artisan-alert-go").click();
-  await expect(page).toHaveURL(/\/artisan$/);
+  await expect(page).toHaveURL(/\/artisan\?a=molu$/);
   await expect(page.getByTestId("artisan-request-text")).toContainText("절임");
   await expect(page.getByTestId("artisan-request")).toContainText("절임 좋음 이상");
   await expect(page.getByTestId("artisan-no-dish")).toBeVisible();

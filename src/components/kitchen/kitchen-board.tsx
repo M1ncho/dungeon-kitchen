@@ -13,7 +13,7 @@ import { IngredientGlyph } from "@/components/cozy/ingredient-glyph";
 import { StarIcon } from "@/components/cozy/icons";
 import { ChunkyButton, CozyBadge, PaperCard, Stamp, WoodPanel } from "@/components/cozy/primitives";
 import {
-  QUALITY_LABEL, applyIngredient, methodHasSizes, methodMaxUses, methodNextCount, methodParam, previewMethod, simulateCooking,
+  QUALITY_LABEL, applyIngredient, grindMaxAffectedOf, maxMethodUsesOf, methodHasSizes, methodMaxUses, methodNextCount, methodParam, methodSizeToxin, previewMethod, simulateCooking,
   type CookingConfig, type CookingIngredient, type CookingMethod, type CookingProblem, type CookingStep, type Point, type Quality, type ToolLevels,
 } from "@/lib/game/cooking";
 import { TUTORIAL_RECIPE, kitchenPhase } from "@/lib/game/tutorial";
@@ -33,17 +33,19 @@ const PROBLEM_TEXT: Record<CookingProblem, string> = {
   too_many_ingredients: "재료는 최대 4개까지예요.",
   method_repeated: "같은 조리법은 정해진 횟수까지만 쓸 수 있어요.",
   method_too_early: "조리법은 재료를 하나 넣은 뒤에 쓸 수 있어요.",
+  method_slots_full: "화구 세 칸을 모두 썼어요. 조리법은 요리 하나에 총 3번까지예요.",
   tool_missing: "아직 얻지 못한 도구의 조리법이에요.",
   size_locked: "도구를 강화해야 효과 크기를 고를 수 있어요.",
   toxin_too_high: "독성이 너무 높아요. 물이나 끓이기로 낮춰 보세요.",
   outside_zone: "표식이 요리 구역 밖에 있어요.",
 };
 
-/** 효과 크기 후보의 표시 문구 (확대 ×배율 / 회전 각도° / 끌어당김 %) */
-function sizeLabel(kind: CookingMethod["kind"], v: number) {
-  if (kind === "scale") return `×${v}`;
-  if (kind === "rotate") return `${v}°`;
-  return `${Math.round(v * 100)}%`;
+/** 효과 크기 후보의 표시 문구 (이동량 ×배율 / 확대 ×배율 / 회전 각도° / 끌어당김 %) */
+function sizeLabel(m: CookingMethod, v: number) {
+  if (m.kind === "scale") return `×${v}`;
+  if (m.kind === "rotate") return `${v}°`;
+  if ((m.kind ?? "shift") === "shift" && m.pullBp === 0) return `×${v}`; // 굽기·튀기기·절이기: 이동량 배율
+  return `${Math.round(v * 100)}%`; // 끓이기·찌기: 끌어당김 비율
 }
 const SIZE_NAMES = ["약", "보통", "강"] as const;
 
@@ -83,7 +85,7 @@ export function KitchenBoard({
   /** 가진 도구와 강화 단계 (조리법 code → 0/1/2). 서버가 조리를 검증할 때 쓰는 값과 같다. */
   tools?: ToolLevels;
   /** 도구 조리법을 어느 층 장인에게서 얻는지 (없는 도구의 실루엣 문구) */
-  toolSources?: Record<string, { floorNo: number; toolName: string; artisanName: string }>;
+  toolSources?: Record<string, { floorNo: number; toolName: string; artisanName: string; artisanCode?: string; basic?: boolean }>;
 }) {
   const router = useRouter();
   const [orderResult, setOrderResult] = useState<OrderResult | null>(null);
@@ -95,6 +97,7 @@ export function KitchenBoard({
   const [category, setCategory] = useState<"all" | "staple" | "peddler" | "rare">("all");
   const [showEmpty, setShowEmpty] = useState(false);
   const [lockInfo, setLockInfo] = useState<string | null>(null);
+  const [methodInfo, setMethodInfo] = useState<string | null>(null); // 조리법 정보(강화 단계·장인에게 가기)를 펼친 조리법
   const [compact, setCompact] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -150,7 +153,11 @@ export function KitchenBoard({
   const hoveredMethod = hoverMethod ? methods.find((m) => m.code === hoverMethod.code) : null;
   const methodPreview =
     hoveredMethod && !methodBlocked(hoveredMethod)
-      ? previewMethod(result.position, result.toxin, hoveredMethod, config, methodParam(hoveredMethod, tools[hoveredMethod.code] ?? 0, hoverMethod?.size))
+      ? previewMethod(
+          result.position, result.toxin, hoveredMethod, config,
+          methodParam(hoveredMethod, tools[hoveredMethod.code] ?? 0, hoverMethod?.size),
+          { second: (result.methodUses[hoveredMethod.code] ?? 0) >= 1, toxinDelta: methodSizeToxin(hoveredMethod, tools[hoveredMethod.code] ?? 0, hoverMethod?.size) },
+        )
       : null;
   const previewPoint: Point | null = ingredientPreview ?? (methodPreview && methodPreview.curve.length > 0 ? methodPreview.pos : null);
   const previewPath: Point[] | null = ingredientPreview ? [result.position, ingredientPreview] : methodPreview && methodPreview.curve.length > 0 ? methodPreview.curve : null;
@@ -161,8 +168,10 @@ export function KitchenBoard({
   /** 지금 이 조리법을 쓸 수 없는 이유 (쓸 수 있으면 null) */
   function methodBlocked(m: CookingMethod): string | null {
     if (m.tool && tools[m.code] === undefined) return "locked";
+    if (result.methodTotal >= maxMethodUsesOf(config)) return "slots_full"; // 화구 칸을 다 썼다
     if ((result.methodUses[m.code] ?? 0) >= methodMaxUses(m, methodLevel(m))) return "used";
     if (result.ingredientCount < 1) return "no_ingredient"; // 모든 조리법은 재료를 하나 이상 넣은 뒤에만
+    if (m.kind === "invert_next" && grindMaxAffectedOf(config) - result.grindGranted <= 0) return "used"; // 갈기가 영향을 주는 재료 수 상한
     // 갈기: 갈아 둔 재료가 들어갈 자리가 남아 있어야 한다
     if (m.kind === "invert_next" && config.maxIngredients - result.ingredientCount <= result.pendingGrind.count) return "no_slot";
     return null;
@@ -358,6 +367,26 @@ export function KitchenBoard({
                       </li>
                     )}
                   </ol>
+                  {/* 화구 칸: 조리법은 종류와 관계없이 요리 하나에 총 3번. 쓸 때마다 불이 한 칸씩 켜지고, 되돌리면 꺼진다 */}
+                  <div className="flex items-center gap-2 max-lg:group-data-[compact=true]/panel:hidden" data-testid="kitchen-burners" data-lit={result.methodTotal} aria-label={`화구 ${maxMethodUsesOf(config)}칸 중 ${result.methodTotal}칸 사용`}>
+                    <span className="shrink-0 font-display text-sm text-dk-paper">화구</span>
+                    <div className="flex gap-1.5">
+                      {Array.from({ length: maxMethodUsesOf(config) }, (_, n) => (
+                        <span
+                          key={n}
+                          data-testid="kitchen-burner"
+                          data-lit={n < result.methodTotal}
+                          className={cn(
+                            "grid size-7 place-items-center rounded-full border-[3px] border-dk-outline text-[15px] leading-none transition-colors",
+                            n < result.methodTotal ? "bg-dk-lantern shadow-[0_0_8px_var(--dk-lantern)]" : "bg-dk-paper-area/40 grayscale opacity-60",
+                          )}
+                        >
+                          🔥
+                        </span>
+                      ))}
+                    </div>
+                    <span className="text-xs text-dk-paper-badge">조리법 총 {maxMethodUsesOf(config)}번까지</span>
+                  </div>
                   {statusBlock}
                   {toxinGauge}
                   {/* 버튼 줄: 데스크톱은 패널 안, 모바일은 하단 탭 바 바로 위에 고정 */}
@@ -484,10 +513,17 @@ export function KitchenBoard({
                 const uses = result.methodUses[m.code] ?? 0;
                 const blocked = methodBlocked(m);
                 const picking = sizePicker === m.code;
+                const secondUse = uses >= 1 && uses < max;
                 const effect =
-                  blocked === "no_ingredient" ? "재료를 먼저 넣어요" : blocked === "no_slot" ? "넣을 자리가 없어요" : m.kind === "invert_next" ? `다음 재료 ${methodNextCount(m, level)}개 반전·독성 0` : m.description;
+                  blocked === "no_ingredient" ? "재료를 먼저 넣어요"
+                    : blocked === "slots_full" ? "화구가 가득 찼어요"
+                    : blocked === "no_slot" ? "넣을 자리가 없어요"
+                    : secondUse ? "2회째는 효과 1/3"
+                    : m.kind === "invert_next" ? `다음 재료 ${methodNextCount(m, level)}개 반전·독성 0`
+                    : m.description;
+                const src = toolSources[m.code];
                 return (
-                  <li key={m.code} className={cn(picking && "col-span-2 sm:col-span-4")}>
+                  <li key={m.code} className={cn("relative", picking && "col-span-2 sm:col-span-4")}>
                     <ChunkyButton
                       variant="paper"
                       size="sm"
@@ -503,9 +539,26 @@ export function KitchenBoard({
                       data-blocked={blocked ?? undefined}
                       className={cn("h-auto w-full flex-col gap-0 py-1 shadow-[0_4px_0_var(--dk-shadow)]", m.tool && "border-dk-crystal")}
                     >
-                      <span className="text-base leading-5">{m.name}{max > 1 ? ` ${uses}/${max}` : uses > 0 ? " ✓" : ""}</span>
+                      <span className="text-base leading-5">
+                        {m.name}{max > 1 ? ` ${uses}/${max}` : uses > 0 ? " ✓" : ""}
+                        {/* 강화 단계 점: 채워진 점 = 강화한 단계 (최대 2단계) */}
+                        <span className="ml-1 align-middle text-[10px] tracking-tighter text-dk-outline" data-testid="kitchen-method-level" data-level={level} aria-label={`강화 ${level}/2`}>{"●".repeat(level)}{"○".repeat(2 - level)}</span>
+                      </span>
                       <span className="w-full truncate px-1 font-body text-[11px] leading-tight text-dk-text-sub" title={effect}>{effect}</span>
                     </ChunkyButton>
+                    {src && (
+                      <button
+                        type="button"
+                        onClick={() => setMethodInfo((c) => (c === m.code ? null : m.code))}
+                        aria-expanded={methodInfo === m.code}
+                        aria-label={`${m.name} 정보`}
+                        data-testid="kitchen-method-info-btn"
+                        data-method={m.code}
+                        className="absolute -right-2 -top-2.5 grid size-5 place-items-center rounded-full border-2 border-dk-outline bg-dk-paper font-display text-[11px] leading-none text-dk-outline shadow-[0_2px_0_var(--dk-shadow)] hover:brightness-105"
+                      >
+                        i
+                      </button>
+                    )}
                     {picking && m.sizes && (
                       <div className="mt-2 flex gap-2 rounded-xl border-[3px] border-dk-outline bg-dk-paper p-2" data-testid="size-picker" role="group" aria-label={`${m.name} 효과 크기`}>
                         {m.sizes.map((v, idx) => (
@@ -520,7 +573,7 @@ export function KitchenBoard({
                             data-testid={`kitchen-size-${idx}`}
                           >
                             <span className="text-base leading-5">{SIZE_NAMES[idx] ?? idx}</span>
-                            <span className="font-body text-[11px] leading-tight">{sizeLabel(m.kind, v)}</span>
+                            <span className="font-body text-[11px] leading-tight">{sizeLabel(m, v)}</span>
                           </ChunkyButton>
                         ))}
                       </div>
@@ -529,6 +582,20 @@ export function KitchenBoard({
                 );
               })}
             </ul>
+            {methodInfo && toolSources[methodInfo] && (() => {
+              const m = methods.find((x) => x.code === methodInfo);
+              const src = toolSources[methodInfo];
+              if (!m) return null;
+              const lv = methodLevel(m);
+              return (
+                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border-2 border-dk-outline/40 bg-dk-paper-area px-3 py-2 text-sm text-dk-text-sub" role="status" data-testid="kitchen-method-info">
+                  <p className="min-w-0 flex-1 basis-56">
+                    <span className="font-display text-base text-dk-outline">{src.toolName}</span> · 「{m.name}」 강화 {lv}/2 — {m.description}
+                  </p>
+                  <ChunkyButton size="sm" variant="wood" href={`/artisan?a=${src.artisanCode ?? ""}`} data-testid="kitchen-to-artisan">장인에게 가기</ChunkyButton>
+                </div>
+              );
+            })()}
             {lockedMethods.length > 0 && (
               <div className="mt-3 space-y-1.5" data-testid="kitchen-locked-methods">
                 <ul className="flex flex-wrap gap-1.5">

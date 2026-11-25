@@ -6,14 +6,66 @@
 //   - 조리법 동작(확대 배율·회전 각도·끌어당김 비율·사용 횟수·크기 선택지)은 seed-data/cooking.ts 의 METHODS
 // 도구는 가게를 그 층으로 처음 옮겼을 때 등장하는 장인에게 부탁을 들어주면 받는다.
 
-export type ArtisanSeed = {
-  code: string; floorNo: number; name: string; title: string; toolName: string; methodCode: string;
-  requestZoneCode: string; requestMinQuality: number; requestCount: number;
+export type ToolSeed = {
+  methodCode: string; toolName: string; upgradeTexts: string[]; upgrades: { gold: number; items: { ingredient: string; qty: number }[] }[];
+};
+// 도구는 methodCode/toolName/upgradeTexts/upgrades(대표 도구 하나)로 적거나, 도구가 여럿이면 tools 로 적는다 (artisanTools 가 같은 모양으로 돌려준다).
+// requestZoneCode 가 null 이면 부탁이 없는 장인이다 (처음부터 공방이 열려 있고, 도구는 이미 가진 것으로 본다).
+export type ArtisanSeed = ToolSeed & {
+  code: string; floorNo: number; name: string; title: string;
+  requestZoneCode: string | null; requestMinQuality: number | null; requestCount: number;
   greeting: string; requestText: string; thanksText: string; usageText: string; idleText: string;
-  upgradeTexts: string[]; upgrades: { gold: number; items: { ingredient: string; qty: number }[] }[];
+  tools?: ToolSeed[];
 };
 
+export const artisanTools = (a: ArtisanSeed): ToolSeed[] =>
+  a.tools ?? [{ methodCode: a.methodCode, toolName: a.toolName, upgradeTexts: a.upgradeTexts, upgrades: a.upgrades }];
+
 export const ARTISANS: ArtisanSeed[] = [
+  {
+    // 1층: 부탁이 없다. 기본 조리법 4개는 모든 유저가 가진 것으로 보고, 고니는 강화만 맡는다. 가게가 어느 층에 있든 공방을 찾아갈 수 있다.
+    code: "gony", floorNo: 1, name: "고니", title: "고블린 화덕지기 할머니", toolName: "화덕", methodCode: "grill",
+    requestZoneCode: null, requestMinQuality: null, requestCount: 1,
+    greeting: "어서 오렴, 입구까지 잘 왔구나. 화덕이며 솥이며 다 내가 오래 길들인 것들이란다.",
+    requestText: "", thanksText: "",
+    usageText: "화덕, 솥, 튀김 냄비, 절임 독 — 네가 늘 쓰던 것들이란다. 손봐 주면 같은 요리에 두 번 쓰거나 세기를 골라 쓸 수 있게 되지. 다만 불은 세 칸뿐이니 아껴 쓰렴.",
+    idleText: "불은 거짓말을 안 한단다. 정성 들인 만큼 돌려주지.",
+    upgradeTexts: [], upgrades: [],
+    tools: [
+      {
+        methodCode: "grill", toolName: "화덕",
+        upgradeTexts: ["화덕에 바람구멍을 하나 더 뚫었단다. 같은 요리에 두 번까지 쓰렴.", "이제 불을 약하게, 보통, 세게 고를 수 있단다. 쓸 때마다 정하렴."],
+        upgrades: [
+          { gold: 150, items: [{ ingredient: "goblin_meat", qty: 3 }, { ingredient: "cave_mushroom", qty: 2 }] },
+          { gold: 500, items: [{ ingredient: "ember_fruit", qty: 3 }, { ingredient: "magma_salt", qty: 2 }] },
+        ],
+      },
+      {
+        methodCode: "boil", toolName: "무쇠 솥",
+        upgradeTexts: ["솥뚜껑을 새로 맞췄단다. 같은 요리에 두 번까지 끓이렴. 두 번째는 살짝만 끓는다는 건 알아 두렴.", "이제 약한 불, 보통 불, 센 불을 고를 수 있단다. 센 불일수록 독이 잘 빠진단다."],
+        upgrades: [
+          { gold: 300, items: [{ ingredient: "bitter_cap", qty: 2 }, { ingredient: "moss_jelly", qty: 3 }] },
+          { gold: 900, items: [{ ingredient: "magma_crab", qty: 1 }, { ingredient: "frost_herb", qty: 3 }] },
+        ],
+      },
+      {
+        methodCode: "fry", toolName: "튀김 냄비",
+        upgradeTexts: ["기름을 한 번 더 두를 수 있게 손봤단다. 같은 요리에 두 번까지 튀기렴.", "이제 살살, 보통, 바싹 튀길 수 있단다. 살살 튀기면 독도 오르지 않는구나."],
+        upgrades: [
+          { gold: 180, items: [{ ingredient: "bat_wing", qty: 3 }, { ingredient: "jerky", qty: 2 }] },
+          { gold: 600, items: [{ ingredient: "fire_root", qty: 3 }, { ingredient: "salamander_tail", qty: 2 }] },
+        ],
+      },
+      {
+        methodCode: "pickle", toolName: "절임 독",
+        upgradeTexts: ["독을 한 번 더 쓸 수 있게 닦아 놨단다. 같은 요리에 두 번까지 절이렴.", "이제 살짝, 보통, 진하게 절일 수 있단다. 독이 잘 길들어서 숙성도 빨라졌구나."],
+        upgrades: [
+          { gold: 180, items: [{ ingredient: "slime_jelly", qty: 3 }, { ingredient: "moss_jelly", qty: 2 }] },
+          { gold: 600, items: [{ ingredient: "ember_honey", qty: 1 }, { ingredient: "glow_berry", qty: 3 }] },
+        ],
+      },
+    ],
+  },
   {
     code: "molu", floorNo: 2, name: "몰루", title: "노움 발효 장인", toolName: "발효 항아리", methodCode: "ferment",
     requestZoneCode: "pickles", requestMinQuality: 2, requestCount: 1,

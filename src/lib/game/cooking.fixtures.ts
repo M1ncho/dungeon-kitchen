@@ -36,6 +36,7 @@ export const poolOfFloor = (floor: number): CookingIngredient[] => seedIngredien
 const METHOD_PERMS: CookingMethod[][] = (() => {
   const out: CookingMethod[][] = [[]];
   const gen = (cur: CookingMethod[]) => {
+    if (cur.length >= (seedConfig.maxMethodUses ?? 3)) return; // 화구 칸
     for (const m of seedMethods) if (!cur.includes(m)) { const n = [...cur, m]; out.push(n); gen(n); }
   };
   gen([]);

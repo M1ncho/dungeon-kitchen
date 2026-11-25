@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { CookingConfig, CookingIngredient, CookingMethod, CookingZone, MethodKind, ToolLevels } from "../../lib/game/cooking";
 import type { Database } from "../index";
-import { artisans, cookingMethods, cookingSettings, dishModifiers, dishZones, ingredients, userArtisans } from "../schema";
+import { artisans, cookingMethods, cookingSettings, dishModifiers, dishZones, ingredients, userArtisans, userToolLevels } from "../schema";
 
 type Executor = Pick<Database, "select">;
 
@@ -42,6 +42,7 @@ export async function loadCookingMaster(
       minIngredients: s.minIngredients, maxIngredients: s.maxIngredients,
       diluentCode: s.diluentCode, diluentPullBp: s.diluentPullBp, diluentToxinDelta: s.diluentToxinDelta,
       perfectRatio: s.perfectRatio, goodRatio: s.goodRatio, agingSeconds: s.agingSeconds,
+      maxMethodUses: s.maxMethodUses, secondUseBp: s.secondUseBp, grindMaxAffected: s.grindMaxAffected,
       zones: unlockedFloor === undefined ? allZones : allZones.filter((z) => z.unlockFloor <= unlockedFloor),
       modifiers: modRows.map((m) => ({ direction: m.direction as "heat" | "sweet" | "umami" | "mana", word: m.word, minDistance: m.minDistance })),
     },
@@ -49,6 +50,7 @@ export async function loadCookingMaster(
       code: m.code, name: m.name, dx: m.dx, dy: m.dy, pullBp: m.pullBp, toxinDelta: m.toxinDelta, aging: m.aging, description: m.description,
       agingSeconds: m.agingSeconds, kind: m.kind as MethodKind, param: m.param, zeroToxin: m.zeroToxin, tool: m.tool,
       usesByLevel: m.usesByLevel, sizes: m.sizes, nextCountByLevel: m.nextCountByLevel,
+      sizeToxin: m.sizeToxin, secondToxinDelta: m.secondToxinDelta, agingByLevel: m.agingByLevel,
     })),
   };
 }
@@ -67,14 +69,20 @@ export function toCookingIngredient(r: typeof ingredients.$inferSelect): Cooking
 }
 
 /**
- * 유저가 가진 장인의 도구와 강화 단계 (조리법 code → 0/1/2). 도구가 없으면 키가 없다 → simulateCooking 이 그 조리법을 거부한다.
- * 조리 검증(cookDish·serveCustom)과 주방 화면이 같은 값을 쓴다.
+ * 유저가 가진 도구와 강화 단계 (조리법 code → 0/1/2). 장인의 도구는 얻기 전에는 키가 없다 → simulateCooking 이 그 조리법을 거부한다.
+ * 기본 조리법은 행이 없으면 0단계로 쓴다 (키가 없어도 된다). 조리 검증(cookDish·serveCustom)과 주방 화면이 같은 값을 쓴다.
+ * user_tool_levels 가 기준이고, 도구가 하나이던 때의 user_artisans.tool_level 도 함께 읽어 큰 쪽을 쓴다 (배포 중 옛 코드가 쓴 값도 잃지 않는다).
  */
 export async function loadUserTools(db: Executor, userId: string): Promise<ToolLevels> {
-  const rows = await db
-    .select({ code: artisans.methodCode, level: userArtisans.toolLevel })
-    .from(userArtisans)
-    .innerJoin(artisans, eq(artisans.code, userArtisans.artisanCode))
-    .where(and(eq(userArtisans.userId, userId), isNotNull(userArtisans.toolLevel)));
-  return Object.fromEntries(rows.map((r) => [r.code, r.level ?? 0]));
+  const [own, legacy] = await Promise.all([
+    db.select({ code: userToolLevels.methodCode, level: userToolLevels.level }).from(userToolLevels).where(eq(userToolLevels.userId, userId)),
+    db
+      .select({ code: artisans.methodCode, level: userArtisans.toolLevel })
+      .from(userArtisans)
+      .innerJoin(artisans, eq(artisans.code, userArtisans.artisanCode))
+      .where(and(eq(userArtisans.userId, userId), isNotNull(userArtisans.toolLevel))),
+  ]);
+  const out: Record<string, number> = {};
+  for (const r of [...own, ...legacy]) out[r.code] = Math.max(out[r.code] ?? 0, r.level ?? 0);
+  return out;
 }

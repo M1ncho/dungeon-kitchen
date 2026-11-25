@@ -4,7 +4,7 @@ import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import {
   cookingMethods, cookingSettings, customerTypes, dishModifiers, dishZones, dungeonFloors, floorIngredients, ingredients,
   customerFloorWeights, helpTopics, marketSettings, orderSettings, orderTexts, peddlerRules, salesSettings, tutorialLines, tutorialSettings,
-  tutorialTips, peddlerLines, artisans, requestSettings, requestTexts, criticSettings, criticTexts,
+  tutorialTips, peddlerLines, artisans, artisanTools as artisanToolsTable, requestSettings, requestTexts, criticSettings, criticTexts,
 } from "./schema";
 import * as schema from "./schema";
 import { COOKING_SETTINGS, METHODS, MODIFIERS, ZONES } from "./seed-data/cooking";
@@ -12,7 +12,7 @@ import { CUSTOMER_ORDER_PROFILES, ORDER_SETTINGS, ORDER_TEXTS } from "./seed-dat
 import { CUSTOMER_FLOOR_WEIGHTS, CUSTOMER_TASTES, SALES_SETTINGS } from "./seed-data/sales";
 import { EXAM_SETTINGS, FLOORS, FLOOR_DROPS, NEW_CUSTOMERS, PEDDLER_ORIGIN_WEIGHTS, PEDDLER_RULES, SUPERVISORS } from "./seed-data/floors";
 import { REQUEST_SETTINGS, REQUEST_TEXTS } from "./seed-data/requests";
-import { ARTISANS } from "./seed-data/artisans";
+import { ARTISANS, artisanTools } from "./seed-data/artisans";
 import { PEDDLER_LINES } from "./seed-data/peddler-lines";
 import { CRITIC_SETTINGS, CRITIC_TEXTS, FLOOR_CRITIC_STRICTNESS } from "./seed-data/critic";
 import { HELP_TOPICS, TUTORIAL_CUSTOMER, TUTORIAL_LINES, TUTORIAL_SETTINGS, TUTORIAL_TIPS } from "./seed-data/tutorial";
@@ -160,6 +160,7 @@ export async function seedWorld(db: PgDatabase<PgQueryResultHKT, typeof schema>)
           diluentCode: excluded("diluent_code"), diluentPullBp: excluded("diluent_pull_bp"),
           diluentToxinDelta: excluded("diluent_toxin_delta"), agingSeconds: excluded("aging_seconds"),
           perfectRatio: excluded("perfect_ratio"), goodRatio: excluded("good_ratio"),
+          maxMethodUses: excluded("max_method_uses"), secondUseBp: excluded("second_use_bp"), grindMaxAffected: excluded("grind_max_affected"),
         },
       });
     await tx
@@ -173,6 +174,7 @@ export async function seedWorld(db: PgDatabase<PgQueryResultHKT, typeof schema>)
           description: excluded("description"),
           agingSeconds: excluded("aging_seconds"), kind: excluded("kind"), param: excluded("param"), zeroToxin: excluded("zero_toxin"),
           tool: excluded("tool"), usesByLevel: excluded("uses_by_level"), sizes: excluded("sizes"), nextCountByLevel: excluded("next_count_by_level"),
+          sizeToxin: excluded("size_toxin"), secondToxinDelta: excluded("second_toxin_delta"), agingByLevel: excluded("aging_by_level"),
         },
       });
     await tx
@@ -295,7 +297,7 @@ export async function seedWorld(db: PgDatabase<PgQueryResultHKT, typeof schema>)
     // 층별 장인과 도구 (code 기준 upsert, 빠진 code 는 지운다)
     await tx
       .insert(artisans)
-      .values(ARTISANS.map((a) => ({ ...a })))
+      .values(ARTISANS.map((a) => { const { tools, ...row } = a; void tools; return row; }))
       .onConflictDoUpdate({
         target: artisans.code,
         set: Object.fromEntries(
@@ -304,6 +306,16 @@ export async function seedWorld(db: PgDatabase<PgQueryResultHKT, typeof schema>)
           ]),
         ) as never,
       });
+    // 장인의 도구 (method_code 기준 upsert, 빠진 도구는 지운다)
+    const toolRows = ARTISANS.flatMap((a) => artisanTools(a).map((t, i) => ({ methodCode: t.methodCode, artisanCode: a.code, toolName: t.toolName, sortOrder: i, upgradeTexts: t.upgradeTexts, upgrades: t.upgrades })));
+    await tx
+      .insert(artisanToolsTable)
+      .values(toolRows)
+      .onConflictDoUpdate({
+        target: artisanToolsTable.methodCode,
+        set: { artisanCode: excluded("artisan_code"), toolName: excluded("tool_name"), sortOrder: excluded("sort_order"), upgradeTexts: excluded("upgrade_texts"), upgrades: excluded("upgrades") },
+      });
+    await tx.delete(artisanToolsTable).where(notInArray(artisanToolsTable.methodCode, toolRows.map((t) => t.methodCode)));
     // 행상 한마디 (code 기준 upsert, 빠진 code 는 지운다)
     await tx
       .insert(peddlerLines)

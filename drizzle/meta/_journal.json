@@ -92,6 +92,13 @@
       "when": 1795480415096,
       "tag": "0012_artisans_tools",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795574410150,
+      "tag": "0013_basic_tools",
+      "breakpoints": true
     }
   ]
 }

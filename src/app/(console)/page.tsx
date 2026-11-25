@@ -9,6 +9,8 @@ import { InventoryBar } from "@/components/home/inventory-bar";
 import { getBoardSummary } from "@/db/queries/board";
 import { getCollectedDishCount } from "@/db/queries/kitchen";
 import { getArtisanAlert } from "@/db/queries/artisans";
+import { getTutorial } from "@/db/commands/tutorial";
+import { db } from "@/db";
 import { getExamAlert } from "@/db/queries/floors";
 import { getUnseenReviewCount } from "@/db/queries/guide";
 import { getSalesStatus } from "@/db/queries/stall";
@@ -18,7 +20,7 @@ import { requireCook } from "@/lib/session";
 
 async function HomeContent() {
   const cook = await requireCook();
-  const [snapshot, inventory, dishCount, sales, examAlert, board, newReviews, artisan] = await Promise.all([
+  const [snapshot, inventory, dishCount, sales, examAlert, board, newReviews, artisan, tutorial] = await Promise.all([
     getPeddlerSnapshot(cook.id),
     getInventory(cook.id),
     getCollectedDishCount(cook.id),
@@ -26,8 +28,10 @@ async function HomeContent() {
     getExamAlert(cook.id),
     getBoardSummary(cook.id, serverNow()),
     getUnseenReviewCount(cook.id),
-    getArtisanAlert(cook.id), // 지금 층의 장인 (가 본 층에서 등장한 경우만)
+    getArtisanAlert(cook.id), // 지금 층의 장인(부탁이 있는 경우)과 공방 수
+    getTutorial(db, cook.id),
   ]);
+  const tutorialActive = tutorial?.status === "active"; // 첫 플레이 안내 중에는 공방 카드를 띄우지 않는다
 
   const shopName = cook.shop?.name ?? "무명 포장마차";
   const peddlerCount = snapshot.peddlers.length;
@@ -129,7 +133,7 @@ async function HomeContent() {
         left={left}
         tiles={tiles}
         alert={
-          (examAlert || newReviews > 0 || artisan) && (
+          (examAlert || newReviews > 0 || artisan.current || artisan.workshops > 0) && (
             <>
           {newReviews > 0 && (
             <div
@@ -140,16 +144,26 @@ async function HomeContent() {
               <ChunkyButton size="sm" variant="paper" href="/guide" data-testid="review-alert-go">가이드북 보기</ChunkyButton>
             </div>
           )}
-          {artisan && (
+          {artisan.current && (
             <div
-              className={`mb-4 flex flex-col gap-2 rounded-2xl border-[3px] border-dk-outline p-3 text-dk-outline shadow-[0_4px_0_var(--dk-shadow)] sm:flex-row sm:items-center sm:justify-between ${artisan.unseen || artisan.state === "request" ? "bg-dk-lantern" : "bg-dk-paper"}`}
-              data-testid="artisan-alert" data-artisan={artisan.code} data-state={artisan.state} data-unseen={artisan.unseen}
+              className={`mb-4 flex flex-col gap-2 rounded-2xl border-[3px] border-dk-outline p-3 text-dk-outline shadow-[0_4px_0_var(--dk-shadow)] sm:flex-row sm:items-center sm:justify-between ${artisan.current.unseen || artisan.current.state === "request" ? "bg-dk-lantern" : "bg-dk-paper"}`}
+              data-testid="artisan-alert" data-artisan={artisan.current.code} data-state={artisan.current.state} data-unseen={artisan.current.unseen}
             >
               <p className="font-display text-lg leading-snug">
-                🔨 {artisan.state === "request" ? `${artisan.name}이(가) 부탁이 있대요!` : `${artisan.name}의 공방`}
-                <span className="ml-2 text-base">{artisan.floorNo}층 장인</span>
+                🔨 {artisan.current.state === "request" ? `${artisan.current.name}이(가) 부탁이 있대요!` : `${artisan.current.name}의 공방`}
+                <span className="ml-2 text-base">{artisan.current.floorNo}층 장인</span>
               </p>
-              <ChunkyButton size="sm" variant="paper" href="/artisan" data-testid="artisan-alert-go">{artisan.state === "request" ? "부탁 들으러 가기" : "장인 만나기"}</ChunkyButton>
+              <ChunkyButton size="sm" variant="paper" href={`/artisan?a=${artisan.current.code}`} data-testid="artisan-alert-go">{artisan.current.state === "request" ? "부탁 들으러 가기" : "장인 만나기"}</ChunkyButton>
+            </div>
+          )}
+          {/* 도구 강화: 도구를 받은 장인의 공방과 1층 고니의 공방은 가게가 어느 층에 있든 찾아갈 수 있다 */}
+          {!artisan.current && artisan.workshops > 0 && !tutorialActive && (
+            <div
+              className="mb-4 flex flex-col gap-2 rounded-2xl border-[3px] border-dk-outline bg-dk-paper p-3 text-dk-outline shadow-[0_4px_0_var(--dk-shadow)] sm:flex-row sm:items-center sm:justify-between"
+              data-testid="workshop-alert"
+            >
+              <p className="font-display text-lg leading-snug">🔨 장인의 공방 <span className="ml-2 text-base">조리 도구를 강화할 수 있어요</span></p>
+              <ChunkyButton size="sm" variant="paper" href="/artisan" data-testid="workshop-alert-go">공방 가기</ChunkyButton>
             </div>
           )}
           {examAlert && (

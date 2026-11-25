@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { getWaitingOrderView, type OrderView } from "../commands/orders";
 import { db } from "../index";
 import { canMoveTo, type MoveResult } from "../../lib/game/floors";
@@ -60,7 +60,8 @@ export async function getFloorMap(userId: string): Promise<FloorMapData> {
     db
       .select({ floorNo: artisans.floorNo, name: artisans.name, toolName: artisans.toolName, methodName: cookingMethods.name })
       .from(artisans)
-      .innerJoin(cookingMethods, eq(cookingMethods.code, artisans.methodCode)),
+      .innerJoin(cookingMethods, eq(cookingMethods.code, artisans.methodCode))
+      .where(isNotNull(artisans.requestZoneCode)), // 부탁 없이 강화만 맡는 장인(1층 고니)은 "열리는 것"에 없다
   ]);
   const floorNoOfId = new Map(floors.map((f) => [f.id, f.floorNo]));
   const currentFloor = floorNoOfId.get(shop?.floorId ?? -1) ?? 1;

@@ -46,6 +46,12 @@ export type CookingMethod = {
   sizes?: number[] | null;
   /** invert_next 가 영향을 주는 재료 수 (강화 단계별). 없으면 1개 */
   nextCountByLevel?: number[] | null;
+  /** 2단계 강화 후 크기(약·보통·강)별 독성 증감. 없으면 toxinDelta. (끓이기 −2/−3/−4, 튀기기 0/+1/+1) */
+  sizeToxin?: number[] | null;
+  /** 같은 요리에 두 번째로 쓸 때의 독성 증감. 없으면 toxinDelta (끓이기는 0 = 독성 감소 없음) */
+  secondToxinDelta?: number | null;
+  /** 강화 단계(0/1/2)별 숙성 시간(초). 없거나 null 이면 agingSeconds (절이기 2단계는 −30%) */
+  agingByLevel?: (number | null)[] | null;
 };
 
 export type CookingZone = {
@@ -72,6 +78,12 @@ export type CookingConfig = {
   goodRatio: number;
   /** 숙성 기본 시간(초): 숙성하는 조리법에 agingSeconds 가 없을 때 쓴다 */
   agingSeconds?: number;
+  /** 화구 칸: 요리 하나에 쓸 수 있는 조리법 총 횟수 (종류 무관, 고정). 없으면 3 */
+  maxMethodUses?: number;
+  /** 같은 조리법을 두 번째로 쓸 때 효과 비율 (1/10000). 없으면 3300 */
+  secondUseBp?: number;
+  /** 갈기가 한 요리에서 영향을 주는 재료 총수 상한 (여러 번 써도 합쳐서). 없으면 2 */
+  grindMaxAffected?: number;
   zones: readonly CookingZone[];
   modifiers: readonly CookingModifier[];
 };
@@ -91,6 +103,7 @@ export type CookingProblem =
   | "too_many_ingredients"
   | "method_repeated" // 조리법은 요리 하나에 정해진 횟수까지 (기본 1회)
   | "method_too_early" // 모든 조리법은 재료를 1개 이상 넣은 뒤에만 쓸 수 있다
+  | "method_slots_full" // 화구 칸(조리법 총 사용 횟수)을 다 썼다
   | "tool_missing" // 장인의 도구가 없는데 그 조리법을 썼다
   | "size_locked" // 2단계 강화 전에는 효과 크기를 고를 수 없다
   | "toxin_too_high"
@@ -105,11 +118,15 @@ export type CookingResult = {
   usedMethods: string[];
   /** 조리법별 사용 횟수 */
   methodUses: Record<string, number>;
+  /** 쓴 조리법 총 횟수 (화구 칸) */
+  methodTotal: number;
   aging: boolean;
   /** 숙성 시간(초): 숙성하는 조리법 중 가장 긴 쪽. 숙성이 없으면 0 */
   agingSeconds: number;
   /** 갈기를 쓰고 아직 다음 재료를 넣지 않아 "적용 대기" 중인 재료 수 */
   pendingGrind: { count: number; zeroToxin: boolean };
+  /** 갈기가 지금까지 영향을 주기로 한 재료 수 (한 요리에서 grindMaxAffected 까지) */
+  grindGranted: number;
   zone: CookingZone | null;
   /** 구역 중심까지 거리 / 반지름 (구역 밖이면 null) */
   ratio: number | null;
@@ -152,15 +169,31 @@ export function applyIngredient(
   };
 }
 
-/** 조리법 한 번의 이동. param 을 주면 유형별 크기(배율·각도·비율)를 그 값으로 쓴다. invert_next 는 위치를 바꾸지 않는다(다음 재료에서 적용). */
-export function applyMethod(pos: Point, toxin: number, m: CookingMethod, cfg: CookingConfig, param?: number): { pos: Point; toxin: number } {
-  const nextToxin = Math.max(0, toxin + m.toxinDelta);
+export const maxMethodUsesOf = (cfg: Pick<CookingConfig, "maxMethodUses">): number => cfg.maxMethodUses ?? 3;
+export const secondUseRatio = (cfg: Pick<CookingConfig, "secondUseBp">): number => (cfg.secondUseBp ?? 3300) / 10000;
+export const grindMaxAffectedOf = (cfg: Pick<CookingConfig, "grindMaxAffected">): number => cfg.grindMaxAffected ?? 2;
+
+/** 조리법을 쓰는 상황: 같은 요리에 두 번째 사용인가, 크기 선택에 따른 독성 증감이 있는가 */
+export type UseContext = { second?: boolean; toxinDelta?: number };
+
+/**
+ * 조리법 한 번의 이동. param 을 주면 유형별 크기(배율·각도·비율)를 그 값으로 쓴다. invert_next 는 위치를 바꾸지 않는다(다음 재료에서 적용).
+ * shift 유형은 param 이 이동량 배율이다 (pullBp 가 있는 끓이기는 param 이 당기는 비율).
+ * 두 번째 사용(ctx.second)은 효과 크기를 secondUseBp(기본 33%)로 줄인다: 이동량·당김·회전 각도는 그 비율, 확대는 "배율 − 1" 증가분이 그 비율.
+ */
+export function applyMethod(pos: Point, toxin: number, m: CookingMethod, cfg: CookingConfig, param?: number, ctx: UseContext = {}): { pos: Point; toxin: number } {
+  const f = ctx.second ? secondUseRatio(cfg) : 1;
+  const baseDelta = ctx.toxinDelta ?? m.toxinDelta;
+  const delta = ctx.second && m.secondToxinDelta != null ? m.secondToxinDelta : baseDelta;
+  const nextToxin = Math.max(0, toxin + delta);
   const p = param ?? m.param ?? 0;
   switch (m.kind ?? "shift") {
-    case "scale":
-      return { pos: { x: round2(clamp(pos.x * p, cfg.mapLimit)), y: round2(clamp(pos.y * p, cfg.mapLimit)) }, toxin: nextToxin };
+    case "scale": {
+      const k = 1 + (p - 1) * f;
+      return { pos: { x: round2(clamp(pos.x * k, cfg.mapLimit)), y: round2(clamp(pos.y * k, cfg.mapLimit)) }, toxin: nextToxin };
+    }
     case "rotate": {
-      const a = (p * Math.PI) / 180; // 시계 방향 (화면에서 y 는 위가 +)
+      const a = (p * f * Math.PI) / 180; // 시계 방향 (화면에서 y 는 위가 +)
       return {
         pos: {
           x: round2(clamp(pos.x * Math.cos(a) + pos.y * Math.sin(a), cfg.mapLimit)),
@@ -172,17 +205,20 @@ export function applyMethod(pos: Point, toxin: number, m: CookingMethod, cfg: Co
     case "pull_zone": {
       const near = nearestZone(pos, cfg.zones);
       if (!near) return { pos, toxin: nextToxin };
+      const r = p * f;
       return {
-        pos: { x: round2(pos.x + (near.centerX - pos.x) * p), y: round2(pos.y + (near.centerY - pos.y) * p) },
+        pos: { x: round2(pos.x + (near.centerX - pos.x) * r), y: round2(pos.y + (near.centerY - pos.y) * r) },
         toxin: nextToxin,
       };
     }
     case "invert_next":
       return { pos, toxin };
     default: {
-      const keep = 1 - m.pullBp / 10000;
+      const pull = (m.pullBp > 0 && param !== undefined ? param : m.pullBp / 10000) * f;
+      const mult = (m.pullBp > 0 ? 1 : (param ?? 1)) * f;
+      const keep = 1 - pull;
       return {
-        pos: { x: round2(clamp(pos.x * keep + m.dx, cfg.mapLimit)), y: round2(clamp(pos.y * keep + m.dy, cfg.mapLimit)) },
+        pos: { x: round2(clamp(pos.x * keep + m.dx * mult, cfg.mapLimit)), y: round2(clamp(pos.y * keep + m.dy * mult, cfg.mapLimit)) },
         toxin: nextToxin,
       };
     }
@@ -212,7 +248,16 @@ export const methodHasSizes = (m: CookingMethod, level: number): boolean => !!m.
 /** 단계에 적힌 크기 선택(size)을 반영한 유형별 크기 값. 선택이 없거나 고를 수 없으면 기본 param. */
 export function methodParam(m: CookingMethod, level: number, size?: number): number | undefined {
   if (methodHasSizes(m, level) && size !== undefined) return m.sizes![size];
-  return m.param;
+  return (m.kind ?? "shift") === "shift" ? undefined : m.param; // shift 는 크기를 고르지 않으면 기본 이동량(배율 1, 기본 당김)
+}
+/** 크기 선택(2단계 이상)에 따른 독성 증감. 없으면 undefined(조리법 기본 독성). 크기를 고르지 않았으면 보통. */
+export function methodSizeToxin(m: CookingMethod, level: number, size?: number): number | undefined {
+  if (!methodHasSizes(m, level) || !m.sizeToxin) return undefined;
+  return m.sizeToxin[size ?? 1];
+}
+/** 이 강화 단계에서 이 조리법의 숙성 시간(초) */
+export function methodAging(m: CookingMethod, level: number, cfg: Pick<CookingConfig, "agingSeconds">): number {
+  return m.agingByLevel?.[level] ?? m.agingSeconds ?? cfg.agingSeconds ?? 0;
 }
 
 /**
@@ -225,11 +270,12 @@ export function previewMethod(
   m: CookingMethod,
   cfg: CookingConfig,
   param?: number,
+  ctx: UseContext = {},
 ): { pos: Point; toxin: number; curve: Point[] } {
-  const r = applyMethod(pos, toxin, m, cfg, param);
+  const r = applyMethod(pos, toxin, m, cfg, param, ctx);
   if ((m.kind ?? "shift") === "invert_next") return { ...r, curve: [] };
   if (m.kind === "rotate") {
-    const p = param ?? m.param ?? 0;
+    const p = (param ?? m.param ?? 0) * (ctx.second ? secondUseRatio(cfg) : 1);
     const curve: Point[] = [];
     const steps = Math.max(2, Math.ceil(p / 5));
     for (let i = 0; i <= steps; i++) {
@@ -286,6 +332,8 @@ export function simulateCooking(
   let ingredientCount = 0;
   let main: CookingIngredient | null = null;
   let grind: { count: number; zeroToxin: boolean } = { count: 0, zeroToxin: false };
+  let grindGranted = 0; // 갈기가 지금까지 영향을 주기로 한 재료 수 (상한 grindMaxAffected)
+  let methodTotal = 0;
   let agingSeconds = 0;
 
   for (const step of steps) {
@@ -309,15 +357,26 @@ export function simulateCooking(
         problems.add("tool_missing"); // 도구 없이는 적용하지 않는다
       } else if (ingredientCount < 1) {
         problems.add("method_too_early");
+      } else if (methodTotal >= maxMethodUsesOf(config)) {
+        problems.add("method_slots_full"); // 화구 칸을 다 썼다
       } else if ((methodUses[m.code] ?? 0) >= methodMaxUses(m, level)) {
         problems.add("method_repeated"); // 횟수를 넘긴 조리법은 적용하지 않는다
       } else if (step.size !== undefined && !(methodHasSizes(m, level) && Number.isInteger(step.size) && step.size >= 0 && step.size < m.sizes!.length)) {
         problems.add("size_locked");
+      } else if (m.kind === "invert_next" && grindMaxAffectedOf(config) - grindGranted <= 0) {
+        problems.add("method_repeated"); // 갈기는 한 요리에서 영향을 주는 재료 수에 상한이 있다
       } else {
+        const second = (methodUses[m.code] ?? 0) >= 1;
         methodUses[m.code] = (methodUses[m.code] ?? 0) + 1;
-        if (m.aging) agingSeconds = Math.max(agingSeconds, m.agingSeconds ?? config.agingSeconds ?? 0);
-        if (m.kind === "invert_next") grind = { count: grind.count + methodNextCount(m, level), zeroToxin: !!m.zeroToxin };
-        else ({ pos, toxin } = applyMethod(pos, toxin, m, config, methodParam(m, level, step.size)));
+        methodTotal += 1;
+        if (m.aging) agingSeconds = Math.max(agingSeconds, methodAging(m, level, config));
+        if (m.kind === "invert_next") {
+          const add = Math.min(methodNextCount(m, level), grindMaxAffectedOf(config) - grindGranted);
+          grindGranted += add;
+          grind = { count: grind.count + add, zeroToxin: !!m.zeroToxin };
+        } else {
+          ({ pos, toxin } = applyMethod(pos, toxin, m, config, methodParam(m, level, step.size), { second, toxinDelta: methodSizeToxin(m, level, step.size) }));
+        }
       }
     } else {
       problems.add("unknown_step");
@@ -352,9 +411,11 @@ export function simulateCooking(
     ingredientCount,
     usedMethods,
     methodUses,
+    methodTotal,
     aging,
     agingSeconds,
     pendingGrind: grind,
+    grindGranted,
     zone: found?.zone ?? null,
     ratio: found?.ratio ?? null,
     quality,

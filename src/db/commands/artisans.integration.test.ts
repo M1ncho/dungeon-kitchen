@@ -1,9 +1,10 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Database } from "../index";
-import { dishZones, dungeonFloors, ingredients, profiles, shops, userArtisans, userDishes, userIngredients, visitedFloors } from "../schema";
+import { dishZones, dungeonFloors, ingredients, profiles, shops, userArtisans, userDishes, userIngredients, userToolLevels, visitedFloors } from "../schema";
 import { deliverRequest, ensureArtisans, upgradeTool } from "./artisans";
 import { cookDish } from "./cook";
+import { loadUserTools } from "./cooking-data";
 import { moveToFloor } from "./floors";
 
 // 층별 장인과 도구 (통합): 첫 이동 시 등장, 부탁 납품과 도구 획득, 도구 없는 조리법 거부, 강화.
@@ -91,8 +92,10 @@ describe.skipIf(!enabled)("층별 장인과 도구 (통합)", () => {
     await ensureArtisans(db, seen);
     await ensureArtisans(db, seen); // 두 번 불려도 한 번만
     await ensureArtisans(db, never);
-    expect(await db.select().from(userArtisans).where(eq(userArtisans.userId, seen))).toHaveLength(1);
-    expect(await db.select().from(userArtisans).where(eq(userArtisans.userId, never))).toHaveLength(0);
+    // 부탁이 없는 1층 고니는 가 본 층과 상관없이 모두에게 있다 (아래 테스트)
+    const quest = (u: string) => db.select().from(userArtisans).where(and(eq(userArtisans.userId, u), ne(userArtisans.artisanCode, "gony")));
+    expect(await quest(seen)).toHaveLength(1);
+    expect(await quest(never)).toHaveLength(0);
   });
 
   it("부탁 납품: 조건에 맞는 요리를 소모하고 도구(0단계)를 받는다. 두 번째 납품은 거부된다", async () => {
@@ -221,5 +224,105 @@ describe.skipIf(!enabled)("층별 장인과 도구 (통합)", () => {
     const weak = await cookDish(db, { userId: u, steps: [step("dungeon_mushroom"), step("salt"), { type: "method", code: "ferment", size: 0 }], now: at(0) });
     expect(weak.ok).toBe(true);
     expect(await cookDish(db, { userId: u, steps: [step("dungeon_mushroom"), step("salt"), { type: "method", code: "ferment", size: 9 }], now: at(0) })).toEqual({ ok: false, reason: "bad_request" });
+  });
+  // ───── 1층 고니: 기본 조리법 강화 ─────
+  const gonyTool = async (u: string, method: string) =>
+    (await db.select().from(userToolLevels).where(and(eq(userToolLevels.userId, u), eq(userToolLevels.methodCode, method))))[0];
+
+  it("1층 고니는 가 본 층·가게 위치와 상관없이 모두에게 등장하고, 도구는 이미 가진 것(0단계)이다", async () => {
+    const deep = await newUser({ floorNo: 5, unlocked: 5 }); // 5층에 있고 1층은 가 본 기록이 없다
+    await ensureArtisans(db, deep);
+    await ensureArtisans(db, deep); // 두 번 불려도 한 번만
+    const rows = (await db.select().from(userArtisans).where(and(eq(userArtisans.userId, deep), eq(userArtisans.artisanCode, "gony"))));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ toolLevel: 0, seenAt: null });
+    expect(rows[0].deliveredAt).not.toBeNull();
+    // 부탁 납품 대상이 아니다
+    const d = await giveDish(deep, "soup", 3);
+    expect(await deliverRequest(db, { userId: deep, artisanCode: "gony", dishId: d.id, now: at(0) })).toEqual({ ok: false, reason: "already_delivered" });
+    expect(await db.select().from(userDishes).where(and(eq(userDishes.id, d.id)))).toMatchObject([{ soldAt: null }]);
+  });
+
+  it("기본 조리법 강화: 도구를 고르면 그 조리법만 오르고, 비용(골드·재료)이 차감된다", async () => {
+    const u = await newUser({ floorNo: 3, gold: 2000, stock: { goblin_meat: 3, cave_mushroom: 2, ember_fruit: 3, magma_salt: 2 } });
+    await ensureArtisans(db, u);
+    // 도구가 여럿이라 조리법을 골라야 한다
+    expect(await upgradeTool(db, { userId: u, artisanCode: "gony" })).toEqual({ ok: false, reason: "bad_request" });
+    expect(await upgradeTool(db, { userId: u, artisanCode: "gony", methodCode: "ferment" })).toEqual({ ok: false, reason: "not_found" }); // 고니의 도구가 아니다
+    expect(await upgradeTool(db, { userId: u, artisanCode: "gony", methodCode: "grill" })).toMatchObject({ ok: true, level: 1, toolName: "화덕" });
+    expect(await gold(u)).toBe(1850);
+    expect(await stock(u, "goblin_meat")).toBe(0);
+    expect(await stock(u, "cave_mushroom")).toBe(0);
+    expect(await gonyTool(u, "grill")).toMatchObject({ level: 1 });
+    expect(await gonyTool(u, "boil")).toBeUndefined(); // 다른 조리법은 그대로 (0단계)
+    expect(await loadUserTools(db, u)).toMatchObject({ grill: 1 });
+    // 2단계(500G + 숯불 열매 3 + 용암 소금 2: 3층 이상 재료)
+    expect(await upgradeTool(db, { userId: u, artisanCode: "gony", methodCode: "grill" })).toMatchObject({ ok: true, level: 2 });
+    expect(await gold(u)).toBe(1350);
+    expect(await stock(u, "ember_fruit")).toBe(0);
+    expect(await upgradeTool(db, { userId: u, artisanCode: "gony", methodCode: "grill" })).toEqual({ ok: false, reason: "max_level" });
+    expect((await loadUserTools(db, u)).grill).toBe(2);
+  });
+
+  it("기본 조리법 강화: 골드나 재료가 모자라면 전체 롤백된다 (단계도, 골드도)", async () => {
+    const u = await newUser({ floorNo: 1, gold: 100, stock: { goblin_meat: 3, cave_mushroom: 2 } });
+    await ensureArtisans(db, u);
+    expect(await upgradeTool(db, { userId: u, artisanCode: "gony", methodCode: "grill" })).toEqual({ ok: false, reason: "insufficient_gold" }); // 150G
+    expect(await gonyTool(u, "grill")).toBeUndefined();
+    expect(await stock(u, "goblin_meat")).toBe(3);
+    await db.update(profiles).set({ gold: 1000 }).where(eq(profiles.id, u));
+    await db.update(userIngredients).set({ quantity: 1 }).where(and(eq(userIngredients.userId, u), eq(userIngredients.ingredientId, ingId.get("cave_mushroom")!)));
+    expect(await upgradeTool(db, { userId: u, artisanCode: "gony", methodCode: "grill" })).toEqual({ ok: false, reason: "insufficient_ingredients" });
+    expect(await gold(u)).toBe(1000);
+    expect(await stock(u, "goblin_meat")).toBe(3);
+    expect(await gonyTool(u, "grill")).toBeUndefined();
+  });
+
+  it("같은 기본 조리법 강화 요청이 동시에 와도 한 번만 처리된다", async () => {
+    const u = await newUser({ floorNo: 1, gold: 1000, stock: { slime_jelly: 3, moss_jelly: 2 } });
+    await ensureArtisans(db, u);
+    const rs = await Promise.all([1, 2].map(() => upgradeTool(db, { userId: u, artisanCode: "gony", methodCode: "pickle" })));
+    expect(rs.filter((r) => r.ok)).toHaveLength(1);
+    expect(await gonyTool(u, "pickle")).toMatchObject({ level: 1 });
+    expect(await gold(u)).toBe(820);
+  });
+
+  it("기본 조리법 단계가 서버 검증에 쓰인다: 2회·크기·화구 3칸", async () => {
+    const u = await newUser({ floorNo: 1, gold: 5000, stock: { dungeon_mushroom: 12, salt: 12 } });
+    await ensureArtisans(db, u);
+    const m = (code: string, size?: number) => (size === undefined ? { type: "method" as const, code } : { type: "method" as const, code, size });
+    const base = [step("dungeon_mushroom"), step("salt")];
+    // 0단계: 같은 조리법 두 번은 거부
+    expect(await cookDish(db, { userId: u, steps: [...base, m("grill"), m("grill")], now: at(0) })).toEqual({ ok: false, reason: "method_repeated" });
+    // 1단계: 두 번 가능, 크기 선택은 거부
+    await db.insert(userToolLevels).values({ userId: u, methodCode: "grill", level: 1 });
+    expect(await cookDish(db, { userId: u, steps: [...base, m("grill"), m("grill", 2)], now: at(0) })).toEqual({ ok: false, reason: "size_locked" });
+    const two = await cookDish(db, { userId: u, steps: [...base, m("grill"), m("grill")], now: at(0) });
+    expect(two.ok === true || ["outside_zone", "toxin_too_high"].includes((two as { reason: string }).reason)).toBe(true);
+    expect(two).not.toEqual({ ok: false, reason: "method_repeated" });
+    // 화구 3칸: 조리법 4번째는 종류와 관계없이 거부
+    await db.update(userToolLevels).set({ level: 2 }).where(eq(userToolLevels.userId, u));
+    expect(await cookDish(db, { userId: u, steps: [...base, m("grill"), m("boil"), m("fry"), m("pickle")], now: at(0) })).toEqual({ ok: false, reason: "method_slots_full" });
+    expect(await cookDish(db, { userId: u, steps: [...base, m("grill"), m("grill"), m("boil"), m("fry")], now: at(0) })).toEqual({ ok: false, reason: "method_slots_full" });
+    // 2단계: 크기 선택은 가능하고, 범위 밖 크기는 거부
+    expect(await cookDish(db, { userId: u, steps: [...base, m("grill", 9)], now: at(0) })).toEqual({ ok: false, reason: "bad_request" });
+  });
+
+  it("장인 도구를 얻으면 도구 단계 행이 0단계로 생기고, 이미 있으면 덮어쓰지 않는다", async () => {
+    const u = await newUser({ floorNo: 2, visited: [2] });
+    await ensureArtisans(db, u);
+    const d = await giveDish(u, "pickles", 2);
+    expect(await deliverRequest(db, { userId: u, artisanCode: "molu", dishId: d.id, now: at(0) })).toMatchObject({ ok: true, methodCode: "ferment" });
+    expect(await gonyTool(u, "ferment")).toMatchObject({ level: 0 });
+    expect((await loadUserTools(db, u)).ferment).toBe(0);
+  });
+
+  it("옛 코드가 user_artisans.tool_level 에 쓴 단계도 잃지 않는다 (둘 중 큰 쪽)", async () => {
+    const u = await newUser({ floorNo: 2, visited: [2] });
+    await ensureArtisans(db, u);
+    await db.update(userArtisans).set({ toolLevel: 2, deliveredAt: at(0) }).where(and(eq(userArtisans.userId, u), eq(userArtisans.artisanCode, "molu")));
+    expect((await loadUserTools(db, u)).ferment).toBe(2);
+    await db.insert(userToolLevels).values({ userId: u, methodCode: "ferment", level: 1 });
+    expect((await loadUserTools(db, u)).ferment).toBe(2);
   });
 });
