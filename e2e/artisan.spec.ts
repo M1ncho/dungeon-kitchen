@@ -21,10 +21,12 @@ test("층별 장인: 2층 이동 → 장인 부탁 확인 → 요리 납품 → 
   await expect(page.getByTestId("kitchen-method")).toHaveCount(4); // 기본 4종
   const locked = page.getByTestId("kitchen-method-locked");
   await expect(locked).toHaveCount(4);
-  await expect(locked.filter({ hasText: "발효" })).toContainText("2층 장인에게서 얻을 수 있어요");
-  await expect(locked.filter({ hasText: "훈연" })).toContainText("3층 장인에게서 얻을 수 있어요");
-  await expect(locked.filter({ hasText: "갈기" })).toContainText("4층 장인에게서 얻을 수 있어요");
-  await expect(locked.filter({ hasText: "찌기" })).toContainText("5층 장인에게서 얻을 수 있어요");
+  await expect(locked.filter({ hasText: "발효" })).toContainText("발효 · 2층 장인");
+  await expect(locked.filter({ hasText: "훈연" })).toContainText("훈연 · 3층 장인");
+  await expect(locked.filter({ hasText: "갈기" })).toContainText("갈기 · 4층 장인");
+  await expect(locked.filter({ hasText: "찌기" })).toContainText("찌기 · 5층 장인");
+  await locked.filter({ hasText: "발효" }).click(); // 누르면 얻는 방법 안내
+  await expect(page.getByTestId("kitchen-lock-info")).toContainText("2층 장인 몰루에게서 얻을 수 있어요");
 
   // 2층을 해금만 했을 뿐 아직 가 보지 않았다 → 장인은 등장하지 않는다
   await page.goto("/");

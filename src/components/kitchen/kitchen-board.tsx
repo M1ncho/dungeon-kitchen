@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { completeCooking, type CookState } from "@/app/actions/kitchen";
@@ -21,7 +21,7 @@ import { useTutorial, useTutorialPhase } from "@/components/tutorial/tutorial-la
 import { cn } from "@/lib/utils";
 import { TasteMap } from "./taste-map";
 
-export type KitchenIngredient = CookingIngredient & { name: string; icon: string; rarity: string; quantity: number };
+export type KitchenIngredient = CookingIngredient & { name: string; icon: string; rarity: string; quantity: number; isStaple?: boolean };
 export type KitchenMethodView = CookingMethod & { name: string; description: string };
 export type KitchenZoneView = CookingConfig["zones"][number] & { id: number; unlockFloor: number; effectName: string; effectDesc: string };
 
@@ -46,13 +46,6 @@ function sizeLabel(kind: CookingMethod["kind"], v: number) {
   return `${Math.round(v * 100)}%`;
 }
 const SIZE_NAMES = ["약", "보통", "강"] as const;
-
-function direction(dx: number, dy: number) {
-  const parts: string[] = [];
-  if (dx) parts.push(`${dx > 0 ? "→ 열기" : "← 단맛"} ${Math.abs(Math.round(dx))}`);
-  if (dy) parts.push(`${dy > 0 ? "↑ 감칠맛" : "↓ 마력"} ${Math.abs(Math.round(dy))}`);
-  return parts.join(" · ");
-}
 
 export function Stars({ quality, className }: { quality: number; className?: string }) {
   return (
@@ -98,6 +91,19 @@ export function KitchenBoard({
   const [hoverId, setHoverId] = useState<number | null>(null);
   const [hoverMethod, setHoverMethod] = useState<{ code: string; size?: number } | null>(null);
   const [sizePicker, setSizePicker] = useState<string | null>(null); // 효과 크기를 고르는 중인 조리법
+  // 레이아웃 전용 상태: 재료 분류 탭, 없는 재료 보기, 잠긴 조리법 안내, 모바일에서 스크롤하면 지도를 작게 줄이는 상태
+  const [category, setCategory] = useState<"all" | "staple" | "peddler" | "rare">("all");
+  const [showEmpty, setShowEmpty] = useState(false);
+  const [lockInfo, setLockInfo] = useState<string | null>(null);
+  const [compact, setCompact] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([e]) => setCompact(!e.isIntersecting && e.boundingClientRect.top < 0), { threshold: 0 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
   const [revealed, setRevealed] = useState<CookState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -248,99 +254,219 @@ export function KitchenBoard({
     statusTone = result.problems.includes("toxin_too_high") ? "warn" : "info";
   }
 
+  // ── 레이아웃 전용 상태 (계산·서버 요청과 무관) ──
+  const shownIngredients = ingredients.filter(
+    (i) =>
+      (showEmpty || i.quantity > 0) &&
+      (category === "all" || (category === "staple" && i.isStaple) || (category === "peddler" && !i.isStaple) || (category === "rare" && i.rarity !== "common")),
+  );
+  const ownedMethods = methods.filter((m) => !m.tool || tools[m.code] !== undefined);
+  const lockedMethods = methods.filter((m) => m.tool && tools[m.code] === undefined);
+  const nameOfIngredient = new Map(ingredients.map((i) => [i.id, i.name]));
+  const nameOfMethod = new Map(methods.map((m) => [m.code, m.name]));
+
+  const statusBlock = (
+    <div className="min-w-0 space-y-1" data-testid="kitchen-status">
+      <p
+        data-testid="kitchen-status-text"
+        data-state={result.canFinish ? "ok" : "no"}
+        className={cn("font-display text-base leading-snug lg:text-lg", statusTone === "warn" && "text-dk-red", compact && "max-lg:line-clamp-2 max-lg:text-sm")}
+      >
+        {status}
+      </p>
+      <p className="text-sm text-dk-paper-badge max-lg:group-data-[compact=true]/panel:hidden">
+        재료 {result.ingredientCount}/{config.maxIngredients}
+        {result.aging && ` · 숙성이 필요해요: ${Math.max(1, Math.round(result.agingSeconds / 60))}분 뒤에 수령할 수 있어요`}
+      </p>
+      {serverError && <p role="alert" className="text-sm text-dk-red">{serverError}</p>}
+    </div>
+  );
+
+  const toxinGauge = (
+    <div className="flex items-center gap-2" data-testid="toxin-gauge" data-toxin={result.toxin}>
+      <span className="shrink-0 font-display text-sm text-dk-paper">독성</span>
+      <div className="flex flex-1 gap-1" aria-hidden="true">
+        {Array.from({ length: config.toxinLimit }, (_, n) => (
+          <span
+            key={n}
+            className={cn(
+              "h-4 flex-1 rounded-md border-[3px] border-dk-outline",
+              n < result.toxin ? (result.toxin >= config.toxinLimit ? "bg-dk-red" : "bg-dk-moss") : "bg-dk-paper-area/50",
+            )}
+          />
+        ))}
+      </div>
+      <span className={cn("shrink-0 font-display text-sm", result.toxin >= config.toxinLimit ? "text-dk-red" : "text-dk-paper")}>
+        {result.toxin} / {config.toxinLimit - 1}
+      </span>
+    </div>
+  );
+
   return (
-    <div className="space-y-8" data-testid="kitchen-board" data-mode={order ? "order" : "normal"}>
+    <div className="space-y-6 max-lg:pb-24" data-testid="kitchen-board" data-mode={order ? "order" : "normal"}>
       {order && (
         <div data-testid="kitchen-order">
           <OrderCard order={order} serverNowMs={serverNowMs} mode="kitchen" />
         </div>
       )}
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
-        <WoodPanel title="맛 지도">
-          <PaperCard tone="area" className="p-2" data-tutorial-target="kitchen-map">
-            <TasteMap
-              limit={config.mapLimit}
-              zones={mapZones}
-              path={result.path}
-              position={result.position}
-              preview={previewPoint}
-              previewPath={previewPath}
-              activeZoneCode={result.zone?.code ?? null}
-            />
-          </PaperCard>
-          <div className="mt-4 flex items-center gap-3" data-testid="toxin-gauge" data-toxin={result.toxin}>
-            <span className="shrink-0 font-display text-base text-dk-paper">독성</span>
-            <div className="flex flex-1 gap-1" aria-hidden="true">
-              {Array.from({ length: config.toxinLimit }, (_, n) => (
-                <span
-                  key={n}
-                  className={cn(
-                    "h-5 flex-1 rounded-md border-[3px] border-dk-outline",
-                    n < result.toxin ? (result.toxin >= config.toxinLimit ? "bg-dk-red" : "bg-dk-moss") : "bg-dk-paper-area/50",
-                  )}
-                />
-              ))}
-            </div>
-            <span className={cn("shrink-0 font-display text-base", result.toxin >= config.toxinLimit ? "text-dk-red" : "text-dk-paper")}>
-              {result.toxin} / {config.toxinLimit - 1}
-            </span>
+      <div ref={sentinelRef} aria-hidden="true" className="h-px" />
+      <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        {/* 왼쪽: 맛 지도 + 냄비 기록. 오른쪽 열 높이에 늘어나지 않고 스크롤해도 화면에 붙어 있다 (모바일은 작게 줄어 위에 고정) */}
+        <div className="contents lg:block">
+          <div
+            className="group/panel z-20 max-lg:sticky max-lg:top-2 lg:sticky lg:top-6 lg:self-start"
+            data-testid="kitchen-map-panel"
+            data-compact={compact}
+          >
+            <WoodPanel title="맛 지도" className="max-lg:group-data-[compact=true]/panel:pb-3 max-lg:group-data-[compact=true]/panel:pt-8">
+              <div className="flex flex-col gap-3 max-lg:group-data-[compact=true]/panel:flex-row max-lg:group-data-[compact=true]/panel:items-center">
+                <PaperCard
+                  tone="area"
+                  className="mx-auto w-[min(100%,max(220px,calc(100dvh-27rem)))] shrink-0 p-2 max-lg:group-data-[compact=true]/panel:mx-0 max-lg:group-data-[compact=true]/panel:w-[132px] max-lg:group-data-[compact=true]/panel:p-1"
+                  data-tutorial-target="kitchen-map"
+                >
+                  <TasteMap
+                    limit={config.mapLimit}
+                    zones={mapZones}
+                    path={result.path}
+                    position={result.position}
+                    preview={previewPoint}
+                    previewPath={previewPath}
+                    activeZoneCode={result.zone?.code ?? null}
+                  />
+                </PaperCard>
+
+                {/* 냄비 기록 */}
+                <div className="min-w-0 flex-1 space-y-2.5" data-testid="kitchen-record">
+                  <ol className="flex flex-wrap gap-1.5 max-lg:group-data-[compact=true]/panel:hidden" aria-label="넣은 순서" data-testid="kitchen-chips">
+                    {steps.length === 0 && <li className="text-sm text-dk-paper-badge">아직 아무것도 넣지 않았어요.</li>}
+                    {steps.map((s, n) => (
+                      <li
+                        key={n}
+                        data-chip={s.type}
+                        className={cn(
+                          "rounded-full border-2 border-dk-outline px-2 text-[13px] leading-[22px] text-dk-outline",
+                          s.type === "ingredient" ? "bg-dk-paper" : "bg-dk-crystal",
+                        )}
+                      >
+                        {s.type === "ingredient" ? nameOfIngredient.get(s.id) : `${nameOfMethod.get(s.code)}${s.size !== undefined ? ` ${SIZE_NAMES[s.size] ?? ""}` : ""}`}
+                      </li>
+                    ))}
+                    {result.pendingGrind.count > 0 && (
+                      <li className="rounded-full border-2 border-dashed border-dk-outline bg-dk-lantern px-2 text-[13px] leading-[22px] text-dk-outline" data-chip="pending">
+                        갈기 대기 ×{result.pendingGrind.count}
+                      </li>
+                    )}
+                  </ol>
+                  {statusBlock}
+                  {toxinGauge}
+                  {/* 버튼 줄: 데스크톱은 패널 안, 모바일은 하단 탭 바 바로 위에 고정 */}
+                  <div
+                    // 안내 말풍선이 같은 자리(탭 바 위 하단 시트)를 쓰므로, 안내 중에는 고정하지 않고 패널 안에 둔다
+                    className={cn(
+                      "flex gap-2",
+                      !tutorial.step && "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-[var(--dk-tabbar-pad)] max-lg:z-30 max-lg:border-t-[3px] max-lg:border-dk-outline max-lg:bg-dk-wood max-lg:px-3 max-lg:py-2 max-lg:shadow-[0_-4px_0_var(--dk-shadow)]",
+                    )}
+                    data-testid="kitchen-actions"
+                  >
+                    <ChunkyButton variant="wood" size="sm" disabled={steps.length === 0 || pending} onClick={undo} data-testid="kitchen-undo" className="max-lg:flex-1">
+                      되돌리기
+                    </ChunkyButton>
+                    <ChunkyButton variant="wood" size="sm" disabled={steps.length === 0 || pending} onClick={reset} data-testid="kitchen-reset" data-tutorial-target="kitchen-reset" className="max-lg:flex-1">
+                      처음부터
+                    </ChunkyButton>
+                    <ChunkyButton disabled={!canSubmit || pending} onClick={order ? serveToCustomer : finish} data-testid="kitchen-finish" data-tutorial-target="kitchen-finish" className="h-10 px-4 text-base max-lg:flex-[1.4] lg:ml-auto">
+                      {pending ? (order ? "내는 중…" : "만드는 중…") : order ? "손님에게 내기" : "완성하기"}
+                    </ChunkyButton>
+                  </div>
+                </div>
+              </div>
+            </WoodPanel>
           </div>
-        </WoodPanel>
+        </div>
 
         <div className="space-y-8">
           <WoodPanel title="재료 상자">
-            <ul className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-x-3 gap-y-5" data-tutorial-target="kitchen-ingredients">
-              {ingredients.map((i) => {
+            <div className="mb-4 flex flex-wrap items-center gap-2" role="tablist" aria-label="재료 분류">
+              {(
+                [["all", "전체"], ["staple", "기본 식재료"], ["peddler", "행상 재료"], ["rare", "희귀 이상"]] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={category === key}
+                  data-testid={`kitchen-tab-${key}`}
+                  data-active={category === key}
+                  onClick={() => setCategory(key)}
+                  className={cn(
+                    "rounded-full border-[3px] border-dk-outline px-3 font-display text-sm leading-6 shadow-[0_3px_0_var(--dk-shadow)]",
+                    category === key ? "bg-dk-lantern text-dk-outline" : "bg-dk-paper text-dk-text-sub hover:brightness-105",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+              <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-sm text-dk-paper">
+                <input type="checkbox" checked={showEmpty} onChange={(e) => setShowEmpty(e.target.checked)} className="size-4 accent-[var(--dk-lantern)]" data-testid="kitchen-show-empty" />
+                없는 재료 보기
+              </label>
+            </div>
+            <ul className="grid grid-cols-2 gap-x-2.5 gap-y-4 sm:grid-cols-3 lg:grid-cols-4" data-tutorial-target="kitchen-ingredients" data-testid="kitchen-ingredient-list">
+              {shownIngredients.map((i) => {
                 const left = i.quantity - (used.get(i.id) ?? 0);
                 const disabled = full || left <= 0;
                 const water = i.code === config.diluentCode;
                 const flip = grindNow && !water ? -1 : 1; // 갈기 적용 대기: 방향이 뒤집히고 독성은 0
                 const dx = (i.heat - i.sweet) * config.kScale * flip;
                 const dy = (i.umami - i.mana) * config.kScale * flip;
+                const dirs = [dx ? (dx > 0 ? "열기→" : "←단맛") : "", dy ? (dy > 0 ? "감칠맛↑" : "마력↓") : ""].filter(Boolean).join(" ");
                 return (
                   <li key={i.id}>
-                   <IngredientHint ingredientId={i.id} infoClassName="bottom-1.5 left-1.5 right-auto">
-                    <button
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => addIngredient(i)}
-                      onMouseEnter={() => setHoverId(i.id)}
-                      onMouseLeave={() => setHoverId(null)}
-                      onFocus={() => setHoverId(i.id)}
-                      onBlur={() => setHoverId(null)}
-                      data-testid="kitchen-ingredient"
-                      data-ingredient-id={i.id}
-                      data-left={left}
-                      aria-label={`${i.name} 넣기 (남은 ${left})`}
-                      className={cn(
-                        "relative flex min-h-[112px] w-full flex-col items-center gap-0.5 rounded-xl border-[3px] border-dk-outline px-1 pb-1.5 pt-2 text-dk-outline shadow-[0_4px_0_var(--dk-shadow)] transition-[transform,box-shadow] duration-75",
-                        "enabled:active:translate-y-1 enabled:active:shadow-none enabled:hover:brightness-105",
-                        RARITY_BG[i.rarity] ?? RARITY_BG.common,
-                        disabled && "cursor-not-allowed opacity-50",
-                      )}
-                    >
-                      <IngredientGlyph name={i.icon} className="size-9" />
-                      <span className="w-full truncate text-center text-[13px]">{i.name}</span>
-                      <span className="w-full text-center text-[11px] leading-tight text-dk-text-sub">
-                        {water ? "중심으로 40%" : direction(dx, dy) || "움직임 없음"}
-                      </span>
-                      {(water || i.toxin > 0) && (
-                        <span className="text-[11px] leading-none text-dk-red">
-                          {grindNow && !water ? <span data-testid="ground-hint">갈기: 독성 0</span> : <>독성 {water ? "−1" : `+${i.toxin}`}</>}
+                    <IngredientHint ingredientId={i.id} infoClassName="bottom-auto left-1 right-auto top-1 size-5 text-[11px]">
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => addIngredient(i)}
+                        onMouseEnter={() => setHoverId(i.id)}
+                        onMouseLeave={() => setHoverId(null)}
+                        onFocus={() => setHoverId(i.id)}
+                        onBlur={() => setHoverId(null)}
+                        data-testid="kitchen-ingredient"
+                        data-ingredient-id={i.id}
+                        data-left={left}
+                        aria-label={`${i.name} 넣기 (남은 ${left})`}
+                        className={cn(
+                          "relative flex min-h-[78px] w-full flex-col items-center gap-0 rounded-xl border-[3px] border-dk-outline px-1 pb-1 pt-1.5 text-dk-outline shadow-[0_3px_0_var(--dk-shadow)] transition-[transform,box-shadow] duration-75",
+                          "enabled:active:translate-y-0.5 enabled:active:shadow-none enabled:hover:brightness-105",
+                          RARITY_BG[i.rarity] ?? RARITY_BG.common,
+                          disabled && "cursor-not-allowed opacity-50",
+                        )}
+                      >
+                        <IngredientGlyph name={i.icon} className="size-7" />
+                        <span className="w-full truncate text-center text-[13px] leading-tight">{i.name}</span>
+                        <span className="w-full truncate text-center text-[11px] leading-tight text-dk-text-sub" title={water ? "중심 쪽으로 40%" : dirs}>
+                          {water ? "중심으로" : dirs || "움직임 없음"}
                         </span>
-                      )}
-                      <span className="absolute -right-2 -top-3 rounded-full border-[3px] border-dk-outline bg-dk-lantern px-2 font-display text-sm leading-5 shadow-[0_3px_0_var(--dk-shadow)]">
-                        ×{left}
-                      </span>
-                    </button>
-                   </IngredientHint>
+                        {(water || i.toxin > 0) && (
+                          <span className="absolute right-1 top-5 rounded-full border border-dk-outline bg-dk-red px-1 text-[10px] leading-4 text-dk-paper">
+                            {grindNow && !water ? <span data-testid="ground-hint">갈기: 독성 0</span> : <>독 {water ? "−1" : `+${i.toxin}`}</>}
+                          </span>
+                        )}
+                        <span className="absolute -right-2 -top-2.5 rounded-full border-[3px] border-dk-outline bg-dk-lantern px-1.5 font-display text-[13px] leading-[18px] shadow-[0_2px_0_var(--dk-shadow)]">
+                          ×{left}
+                        </span>
+                      </button>
+                    </IngredientHint>
                   </li>
                 );
               })}
             </ul>
-            {ingredients.length === 0 && (
-              <p className="py-4 text-center text-base text-dk-paper-badge">
-                가진 재료가 없어요. <Link href="/market" className="underline">재료 시장</Link>에서 구해 보세요.
+            {shownIngredients.length === 0 && (
+              <p className="py-4 text-center text-base text-dk-paper-badge" data-testid="kitchen-no-ingredients">
+                {ingredients.some((i) => i.quantity > 0) ? "이 분류에는 재료가 없어요." : (
+                  <>가진 재료가 없어요. <Link href="/market" className="underline">재료 시장</Link>에서 구해 보세요.</>
+                )}
               </p>
             )}
           </WoodPanel>
@@ -351,32 +477,17 @@ export function KitchenBoard({
                 갈기 적용 대기 — 다음에 넣는 재료 {result.pendingGrind.count}개의 방향이 뒤집히고 독성은 0이에요
               </p>
             )}
-            <ul className="grid grid-cols-2 gap-3" data-tutorial-target="kitchen-methods">
-              {methods.map((m) => {
-                const owned = !m.tool || tools[m.code] !== undefined;
-                if (!owned) {
-                  const src = toolSources[m.code];
-                  return (
-                    <li key={m.code}>
-                      <div
-                        className="flex h-full w-full flex-col items-center justify-center gap-0 rounded-xl border-[3px] border-dashed border-dk-outline/50 bg-dk-paper-area/60 px-2 py-1.5 text-center opacity-80"
-                        data-testid="kitchen-method-locked" data-method={m.code}
-                      >
-                        <span className="font-display text-lg leading-6 text-dk-stone [filter:grayscale(1)]">🔒 {m.name}</span>
-                        <span className="font-body text-[11px] leading-tight text-dk-text-sub">
-                          {src ? `${src.floorNo}층 장인에게서 얻을 수 있어요` : "장인에게서 얻을 수 있어요"}
-                        </span>
-                      </div>
-                    </li>
-                  );
-                }
+            <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-4" data-tutorial-target="kitchen-methods">
+              {ownedMethods.map((m) => {
                 const level = methodLevel(m);
                 const max = methodMaxUses(m, level);
                 const uses = result.methodUses[m.code] ?? 0;
                 const blocked = methodBlocked(m);
                 const picking = sizePicker === m.code;
+                const effect =
+                  blocked === "no_ingredient" ? "재료를 먼저 넣어요" : blocked === "no_slot" ? "넣을 자리가 없어요" : m.kind === "invert_next" ? `다음 재료 ${methodNextCount(m, level)}개 반전·독성 0` : m.description;
                 return (
-                  <li key={m.code} className={cn(picking && "col-span-2")}>
+                  <li key={m.code} className={cn(picking && "col-span-2 sm:col-span-4")}>
                     <ChunkyButton
                       variant="paper"
                       size="sm"
@@ -390,12 +501,10 @@ export function KitchenBoard({
                       data-method={m.code}
                       data-uses={uses}
                       data-blocked={blocked ?? undefined}
-                      className={cn("h-auto w-full flex-col gap-0 py-1.5", m.tool && "border-dk-crystal")}
+                      className={cn("h-auto w-full flex-col gap-0 py-1 shadow-[0_4px_0_var(--dk-shadow)]", m.tool && "border-dk-crystal")}
                     >
-                      <span className="text-lg leading-6">{m.name}{max > 1 ? ` ${uses}/${max}` : uses > 0 ? " ✓" : ""}</span>
-                      <span className="font-body text-[11px] leading-tight text-dk-text-sub">
-                        {blocked === "no_ingredient" ? "재료를 먼저 넣어요" : blocked === "no_slot" ? "다음 재료 자리가 없어요" : m.kind === "invert_next" ? `다음 재료 ${methodNextCount(m, level)}개의 방향 반전, 독성 0` : m.description}
-                      </span>
+                      <span className="text-base leading-5">{m.name}{max > 1 ? ` ${uses}/${max}` : uses > 0 ? " ✓" : ""}</span>
+                      <span className="w-full truncate px-1 font-body text-[11px] leading-tight text-dk-text-sub" title={effect}>{effect}</span>
                     </ChunkyButton>
                     {picking && m.sizes && (
                       <div className="mt-2 flex gap-2 rounded-xl border-[3px] border-dk-outline bg-dk-paper p-2" data-testid="size-picker" role="group" aria-label={`${m.name} 효과 크기`}>
@@ -420,38 +529,42 @@ export function KitchenBoard({
                 );
               })}
             </ul>
+            {lockedMethods.length > 0 && (
+              <div className="mt-3 space-y-1.5" data-testid="kitchen-locked-methods">
+                <ul className="flex flex-wrap gap-1.5">
+                  {lockedMethods.map((m) => {
+                    const src = toolSources[m.code];
+                    const open = lockInfo === m.code;
+                    return (
+                      <li key={m.code}>
+                        <button
+                          type="button"
+                          onClick={() => setLockInfo(open ? null : m.code)}
+                          aria-expanded={open}
+                          title={src ? `${src.floorNo}층 장인 ${src.artisanName}에게서 얻을 수 있어요` : "장인에게서 얻을 수 있어요"}
+                          data-testid="kitchen-method-locked"
+                          data-method={m.code}
+                          className={cn(
+                            "rounded-full border-2 border-dashed border-dk-outline/60 px-2.5 text-[13px] leading-6 text-dk-paper-badge",
+                            open ? "bg-dk-outline/40" : "bg-dk-outline/20 hover:bg-dk-outline/30",
+                          )}
+                        >
+                          🔒 {m.name} · {src ? `${src.floorNo}층 장인` : "장인"}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {lockInfo && toolSources[lockInfo] && (
+                  <p className="rounded-xl border-2 border-dk-outline/40 bg-dk-paper-area px-2.5 py-1.5 text-sm text-dk-text-sub" role="status" data-testid="kitchen-lock-info">
+                    {toolSources[lockInfo].toolName}는 {toolSources[lockInfo].floorNo}층 장인 {toolSources[lockInfo].artisanName}에게서 얻을 수 있어요. 그 층에 가게를 옮기고 부탁을 들어주세요.
+                  </p>
+                )}
+              </div>
+            )}
           </WoodPanel>
         </div>
       </div>
-
-      {/* 하단 안내판 */}
-      <PaperCard className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between" data-testid="kitchen-status">
-        <div className="min-w-0 space-y-1">
-          <p
-            data-testid="kitchen-status-text"
-            data-state={result.canFinish ? "ok" : "no"}
-            className={cn("font-display text-lg leading-snug", statusTone === "warn" && "text-dk-red")}
-          >
-            {status}
-          </p>
-          <p className="text-sm text-dk-text-sub">
-            재료 {result.ingredientCount}/{config.maxIngredients}
-            {result.aging && ` · 숙성이 필요해요: ${Math.max(1, Math.round(result.agingSeconds / 60))}분 뒤에 수령할 수 있어요`}
-          </p>
-          {serverError && <p role="alert" className="text-sm text-dk-red">{serverError}</p>}
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-3">
-          <ChunkyButton variant="wood" size="sm" disabled={steps.length === 0 || pending} onClick={undo} data-testid="kitchen-undo">
-            되돌리기
-          </ChunkyButton>
-          <ChunkyButton variant="wood" size="sm" disabled={steps.length === 0 || pending} onClick={reset} data-testid="kitchen-reset" data-tutorial-target="kitchen-reset">
-            처음부터
-          </ChunkyButton>
-          <ChunkyButton disabled={!canSubmit || pending} onClick={order ? serveToCustomer : finish} data-testid="kitchen-finish" data-tutorial-target="kitchen-finish">
-            {pending ? (order ? "내는 중…" : "만드는 중…") : order ? "손님에게 내기" : "완성하기"}
-          </ChunkyButton>
-        </div>
-      </PaperCard>
 
       {orderResult && (
         <OrderResultDialog

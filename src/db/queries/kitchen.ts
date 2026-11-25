@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../index";
 import { loadCookingMaster, loadUserTools, toCookingIngredient } from "../commands/cooking-data";
 import { getToolSources } from "./artisans";
@@ -17,7 +17,7 @@ export async function getKitchenData(userId: string) {
       .select({ ing: ingredients, quantity: userIngredients.quantity })
       .from(userIngredients)
       .innerJoin(ingredients, eq(ingredients.id, userIngredients.ingredientId))
-      .where(and(eq(userIngredients.userId, userId), gt(userIngredients.quantity, 0)))
+      .where(eq(userIngredients.userId, userId)) // 수량 0 인 재료도 보낸다 (화면의 "없는 재료 보기" 토글용, 기본은 숨김)
       .orderBy(asc(ingredients.name)),
     db
       .select({ zoneId: recipeDiscoveries.zoneId, bestQuality: recipeDiscoveries.bestQuality })
@@ -34,6 +34,7 @@ export async function getKitchenData(userId: string) {
       name: ing.name,
       icon: ing.icon,
       rarity: ing.rarity,
+      isStaple: ing.isStaple,
       quantity,
     })),
     discoveredZoneIds: discovered.map((d) => d.zoneId),
